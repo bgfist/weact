@@ -1,5 +1,6 @@
-# Weact - A Framework For Writing Wechat MiniProgram Like React, And With Typescript
+# Weact
 
+A Framework For Writing Wechat MiniProgram Like React, And With Typescript
 
 ## install
 ```bash
@@ -19,13 +20,21 @@ npm i @bgfist/weact
 ```
 
 ## use namespace wx
-at your app entry app.ts, import this package before all.
+at your app entry app.ts, import this package before all:
 
 app.ts
 ```ts
 import * as Weact from "@bgfist/weact";
 
 ...
+```
+
+or add the triple slash directive:
+
+app.ts
+```ts
+/// <reference types="@bgfist/weact"/>
+
 ```
 
 ## class-style
@@ -55,8 +64,9 @@ class DemoPage extends WXPage<Data> {
 new DemoPage().init()
 ```
 
-- all instance fields and methods will be packed as options to wx's `Page` function
-- and `WXComponent` will automatically bundle all methods into `options.methods`
+> all instance fields and methods will be packed as options to wx's `Page` function
+
+> and `WXComponent` will automatically bundle all methods into `options.methods`
 
 ## hook-style
 ```ts
@@ -74,14 +84,16 @@ function Demo() {
   const decrCount = () => setCount(s => s - 1)
 
   return {
-    count,
-    incrCount,
-    decrCount,
+    count, // data
+    incrCount, // method
+    decrCount, // method
   }
 }
 
 FPage(Demo)
 ```
+
+> for an elegant writing style, weact will group fields and methods for your return using the `typeof` operator
 
 All supported hooks are listed below, peek their code annotation for a detail explain: 
 
