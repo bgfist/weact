@@ -8,7 +8,7 @@ npm i @bgfist/weact
 
 ## tsconfig.json
 
-```json
+```js
 {
   "compilerOptions": {
     ...
