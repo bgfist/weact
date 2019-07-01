@@ -1,0 +1,23 @@
+{
+  "name": "@bgfist/weact",
+  "version": "1.0.0",
+  "description": "A Framework For Writing Wechat MiniProgram Like React, And With Typescript",
+  "main": "dist/index.js",
+  "types": "d/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": {
+    "name": "bgfist",
+    "url": "https://github.com/bgfist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bgfist/weact"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^3.5.2"
+  }
+}
