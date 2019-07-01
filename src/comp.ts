@@ -1,6 +1,7 @@
 /// <reference path="../typings/weapp/index.d.ts" />
 
 import { collectClassProps, splitFieldsAndMethods, identity, transformProperties } from "./util"
+import { debug } from "./debug";
 
 interface WXComponent<P extends AnyObject = never, D extends AnyObject = never, A extends AnyObject = never> extends Component.WXComponent<P, D> {
   actions: A
@@ -56,6 +57,8 @@ class WXComponent<P extends AnyObject = never, D extends AnyObject = never, A ex
     })
     props = injectActions(props)
 
+    debug("Component:options", props)
+
     Component(props)
   }
 }
@@ -87,6 +90,8 @@ class WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> 
       ...fields
     })
     props = injectActions(props)
+
+    debug("Behavior:options", props)
 
     return Behavior(props)
   }

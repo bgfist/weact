@@ -1,6 +1,8 @@
 /// <reference path="../typings/weapp/index.d.ts" />
 
-import shallowEqual, { transformProperties } from "./util"
+import { transformProperties } from "./util"
+import { genDiff } from './diff'
+import { debug } from './debug'
 
 interface HookRecords<T> {
   [index: number]: T
@@ -17,6 +19,7 @@ interface Ref<T = any> {
 }
 
 interface RendererHooksCtx {
+  rerenderTriggerringByProp: boolean
   rerender: () => void
   state: HookRecords<any>
   effect: HookRecords<{
@@ -65,9 +68,15 @@ function splitDataAndMethod(def: AnyObject) {
 }
 
 function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newVal: any, oldVal: any) {
+  debug("PropChanged", newVal === oldVal || !this.$$hooksCtx ? '[rerender skipped]' : '')
   if (newVal !== oldVal) {
     if (this.$$hooksCtx) {
-      this.$$hooksCtx.rerender()
+      debug("PropChanged:Rerender", newVal, this.$$hooksCtx.rerenderTriggerringByProp ? '[skipped]' : '')
+      if (!this.$$hooksCtx.rerenderTriggerringByProp) {
+        this.$$hooksCtx.rerenderTriggerringByProp = true
+        wx.nextTick(() => this.$$hooksCtx.rerenderTriggerringByProp = false)
+        this.$$hooksCtx.rerender()
+      }
     }
   }
 }
@@ -215,8 +224,9 @@ export function useThisAsComp(func: (this: Component.WXComponent, self: Componen
   return () => func.call(inst, inst)
 }
 
-function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject) {
+function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject, propertyKeys?: string[]) {
   this.$$hooksCtx = {
+    rerenderTriggerringByProp: false,
     state: [],
     effect: {},
     layoutEffect: {},
@@ -229,8 +239,10 @@ function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject) {
       currentRenderer = null
 
       const { data, methods } = splitDataAndMethod(newDef)
+      debug("NewDataAndMethods", data, methods)
+
       Object.keys(methods).forEach(key => {
-        ;(this as any)[key] = methods[key]
+        ; (this as any)[key] = methods[key]
       })
 
       const triggerLayoutEffect = () => {
@@ -246,12 +258,34 @@ function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject) {
         })
       }
 
-      if (shallowEqual(data, this.data)) {
+      const oldData = { ...this.data }
+      // hack, this.data has a inner field __webviewId__
+      delete oldData.__webviewId__
+
+      const diff = genDiff(data, oldData)
+
+      // property might be reset to undefined by system, omit it
+      if (propertyKeys) {
+        propertyKeys.forEach(k => {
+          if (diff[k] === undefined) {
+            delete diff[k]
+          }
+        })
+      }
+
+      const noUpdate = !Object.keys(diff).length
+
+      debug("setData", diff, noUpdate ? '[skipped]' : '')
+
+      if (noUpdate) {
         triggerLayoutEffect()
         return
       }
 
-      this.setData(data, triggerLayoutEffect)
+      this.setData(diff, ()=> {
+        debug("setData:updated")
+        triggerLayoutEffect()
+      })
     }
   }
   this.$$hooksCtx.rerender()
@@ -283,20 +317,19 @@ export function FPage(func: HookFunc) {
 
 export function FComp<T>(func: HookFunc<T>, defaultProps: T) {
   const properties = transformProperties(defaultProps)
+  const propertyKeys: string[] = []
   for (const k in properties) {
     properties[k].observer = propChangeObserver
+    propertyKeys.push(k)
   }
-
   // @ts-ignore
   return Component<T, any, WXRenderHooksCtx>({
     properties,
     attached() {
-      onCreate.call(this, func, this.properties)
+      onCreate.call(this, func, this.properties, propertyKeys)
     },
     detached() {
       onDestroy.call(this)
     }
   })
 }
-
-export { FComp as FMixin }

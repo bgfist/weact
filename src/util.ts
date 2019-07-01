@@ -31,29 +31,40 @@ export function identity<T = any>(t: T) {
   return t
 }
 
-/**
- *
- * @param newData 新的数据，可能是部分
- * @param oldData 老的数据，为全部
- *
- * 只比较新数据中的字段
- */
-export default function shallowEqual(newData: any, oldData: any) {
+
+function deepDiff(newData: any, oldData: any): any {
+  const diff: any = {}
   if (newData === oldData) {
-    return true
+    return diff
   }
 
-  const keysA = Object.keys(newData)
+  if (newData === null || oldData === null || typeof newData !== 'object' || typeof oldData !== 'object') {
+    return newData
+  }
 
-  // Test for A's keys different from B.
-  const hasOwn = Object.prototype.hasOwnProperty
-  for (const key of keysA) {
-    if (!hasOwn.call(oldData, key) || newData[key] !== oldData[key]) {
-      return false
+  Object.keys(newData).forEach(keyA => {
+    diff[keyA] = deepDiff(newData[keyA], oldData[keyA])
+  })
+
+  Object.keys(oldData).forEach(keyB => {
+    if (diff[keyB] === undefined) {
+      diff[keyB] = oldData[keyB]
     }
-  }
+  })
 
-  return true
+  return diff
+}
+
+export function genUpdatedPathAndValue(out: any, diff: any, parentPath: string) {
+  Object.keys(diff).forEach(key => {
+    const _diff = diff[key]
+    const path = parentPath + '.' + key
+    if (typeof _diff === 'object') {
+      genUpdatedPathAndValue(out, _diff, path)
+    } else {
+      out[path] = _diff
+    }
+  })
 }
 
 export function transformProperties(properties: any) {

@@ -1,6 +1,7 @@
 /// <reference path="../typings/weapp/index.d.ts" />
 
 import { collectClassProps, identity } from "./util"
+import { debug } from "./debug";
 
 interface WXPage<D extends AnyObject = never, A extends AnyObject = never> extends Page.WXPage<D> {
   actions: A
@@ -14,6 +15,8 @@ class WXPage<D extends AnyObject = never, A extends AnyObject = never> {
     props = checkForbiddenProps(props)
     props = connect(props)
     props = injectActions(props)
+
+    debug("Page:options", props)
 
     Page(props)
   }
