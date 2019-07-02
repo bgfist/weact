@@ -44,3 +44,7 @@ type PartialOptional<T, K extends keyof T> = Partial<Pick<T, K>> & Pick<T, Exclu
 type Optional<T> = {
   [K in keyof T]+?: T[K]
 }
+
+type NotOverlap<Dist, Src> = Extract<keyof Dist, keyof Src> extends never ? Dist : never
+
+type AnyObjectOrUndefined = AnyObject | undefined

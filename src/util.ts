@@ -31,41 +31,14 @@ export function identity<T = any>(t: T) {
   return t
 }
 
-
-function deepDiff(newData: any, oldData: any): any {
-  const diff: any = {}
-  if (newData === oldData) {
-    return diff
+export const endlessProxy: any = new Proxy(()=> {}, {
+  get() {
+    return endlessProxy
+  },
+  apply() {
+    return endlessProxy
   }
-
-  if (newData === null || oldData === null || typeof newData !== 'object' || typeof oldData !== 'object') {
-    return newData
-  }
-
-  Object.keys(newData).forEach(keyA => {
-    diff[keyA] = deepDiff(newData[keyA], oldData[keyA])
-  })
-
-  Object.keys(oldData).forEach(keyB => {
-    if (diff[keyB] === undefined) {
-      diff[keyB] = oldData[keyB]
-    }
-  })
-
-  return diff
-}
-
-export function genUpdatedPathAndValue(out: any, diff: any, parentPath: string) {
-  Object.keys(diff).forEach(key => {
-    const _diff = diff[key]
-    const path = parentPath + '.' + key
-    if (typeof _diff === 'object') {
-      genUpdatedPathAndValue(out, _diff, path)
-    } else {
-      out[path] = _diff
-    }
-  })
-}
+})
 
 export function transformProperties(properties: any) {
   if (!properties) {

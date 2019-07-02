@@ -1,6 +1,6 @@
 /// <reference path="../typings/weapp/index.d.ts" />
 
-import { transformProperties } from "./util"
+import { transformProperties, endlessProxy } from "./util"
 import { genDiff } from './diff'
 import { debug } from './debug'
 
@@ -18,7 +18,9 @@ interface Ref<T = any> {
   current?: T
 }
 
-interface RendererHooksCtx {
+interface RendererHooksCtx<T extends HookProps = any> {
+  props: T
+  oldData?: AnyObject
   rerenderTriggerringByProp: boolean
   rerender: () => void
   state: HookRecords<any>
@@ -34,13 +36,17 @@ interface RendererHooksCtx {
   ref: HookRecords<Ref>
 }
 
-interface WXRenderHooksCtx {
-  $$hooksCtx: RendererHooksCtx
+interface WXRenderHooksCtx<T extends HookProps = any> {
+  $$hooksCtx: RendererHooksCtx<T>
 }
 
-type WXRenderer = (Page.WXPage | Component.WXComponent) & WXRenderHooksCtx
+type WXRenderer<T extends HookProps = any> = (Page.WXPage | Component.WXComponent) & WXRenderHooksCtx<T>
 
-type HookFunc<T = any> = (props: T) => AnyObject | void
+type HookProps = AnyObject | undefined
+
+type HookReturn = AnyObject | void
+
+type HookFunc<T extends HookProps, R extends HookReturn> = (props: T) => NotOverlap<R, T>
 
 let currentRenderer: WXRenderer | null = null
 let hookCursor = 0
@@ -224,8 +230,10 @@ export function useThisAsComp(func: (this: Component.WXComponent, self: Componen
   return () => func.call(inst, inst)
 }
 
-function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject, propertyKeys?: string[]) {
+function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, func: HookFunc<T, R>, props: T) {
   this.$$hooksCtx = {
+    props,
+    oldData: undefined,
     rerenderTriggerringByProp: false,
     state: [],
     effect: {},
@@ -235,7 +243,7 @@ function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject, propertyKe
     rerender: () => {
       currentRenderer = this
       hookCursor = 0
-      const newDef = func.call(null, props) || {}
+      const newDef = (func.call(null, this.$$hooksCtx.props) || {}) as AnyObject
       currentRenderer = null
 
       const { data, methods } = splitDataAndMethod(newDef)
@@ -258,20 +266,8 @@ function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject, propertyKe
         })
       }
 
-      const oldData = { ...this.data }
-      // hack, this.data has a inner field __webviewId__
-      delete oldData.__webviewId__
-
-      const diff = genDiff(data, oldData)
-
-      // property might be reset to undefined by system, omit it
-      if (propertyKeys) {
-        propertyKeys.forEach(k => {
-          if (diff[k] === undefined) {
-            delete diff[k]
-          }
-        })
-      }
+      const diff = genDiff(data, this.$$hooksCtx.oldData)
+      this.$$hooksCtx.oldData = data
 
       const noUpdate = !Object.keys(diff).length
 
@@ -282,7 +278,7 @@ function onCreate(this: WXRenderer, func: HookFunc, props: AnyObject, propertyKe
         return
       }
 
-      this.setData(diff, ()=> {
+      this.setData(diff, () => {
         debug("setData:updated")
         triggerLayoutEffect()
       })
@@ -303,7 +299,9 @@ function onDestroy(this: WXRenderer) {
   this.$$hooksCtx = null
 }
 
-export function FPage(func: HookFunc) {
+type PageHookFunc = (options?: AnyObject) => HookReturn
+
+export function FPage(func: PageHookFunc) {
   // @ts-ignore
   return Page<any, WXRenderHooksCtx>({
     onLoad(options) {
@@ -315,7 +313,10 @@ export function FPage(func: HookFunc) {
   })
 }
 
-export function FComp<T>(func: HookFunc<T>, defaultProps: T) {
+export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>): void
+export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T): void
+
+export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T) {
   const properties = transformProperties(defaultProps)
   const propertyKeys: string[] = []
   for (const k in properties) {
@@ -326,10 +327,54 @@ export function FComp<T>(func: HookFunc<T>, defaultProps: T) {
   return Component<T, any, WXRenderHooksCtx>({
     properties,
     attached() {
-      onCreate.call(this, func, this.properties, propertyKeys)
+      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, func, this.properties)
     },
     detached() {
       onDestroy.call(this)
     }
   })
+}
+
+export function createHookRunner<T extends HookProps, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps: T) {
+  // @ts-ignore
+  const mockRenderrer: WXPage = {
+    data: {},
+    setData(data: any, callback?: () => void) { setTimeout(callback) },
+    onLoad() {
+      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, hook, defaultProps)
+    },
+    onUnload() {
+      onDestroy.call(this)
+    }
+  }
+
+  const proxy = new Proxy(mockRenderrer, {
+    get(target:any, key: string) {
+      if(key in target) {
+        return target[key]
+      }
+      return endlessProxy
+    }
+  })
+
+  proxy.onLoad()
+
+  return {
+    unMount() {
+      proxy.onUnload()
+    },
+    run(props?: T) {
+      if (props) {
+        proxy.$$hooksCtx.props = props
+      }
+      proxy.$$hooksCtx.rerender()
+    }
+  }
+}
+
+export function diffHookReturnData(newRet: any, oldRet: any) {
+  const { data: newData } = splitDataAndMethod(newRet || {})
+  const { data: oldData } = splitDataAndMethod(oldRet || {})
+
+  return genDiff(newData, oldData)
 }

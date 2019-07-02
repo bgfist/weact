@@ -132,7 +132,7 @@ declare namespace Page {
     ): void
   }
 
-  interface WXPageConstructorOptions<D extends IAnyObject = any> extends WXPageLifeCycle {
+  interface WXPageConstructorOptions<D extends AnyObjectOrUndefined = undefined> extends WXPageLifeCycle {
     /** 页面的初始数据
      * 
      * `data` 是页面第一次渲染使用的**初始数据**。
@@ -154,7 +154,7 @@ declare namespace Page {
      */
   }
 
-  interface WXPageInstance<D extends AnyObject= any> {
+  interface WXPageInstance<D extends AnyObjectOrUndefined = undefined> {
     setData<K extends keyof D>(
       /** 这次要改变的数据
        *
@@ -171,10 +171,10 @@ declare namespace Page {
     route: string
   }
 
-  interface WXPage<D extends AnyObject= any> extends WXPageConstructorOptions<D>, WXPageInstance<D> {}
+  interface WXPage<D extends AnyObjectOrUndefined = undefined> extends WXPageConstructorOptions<D>, WXPageInstance<D> { }
 
   interface PageConstructor {
-    <D extends IAnyObject = any, E extends IAnyObject = any>(
+    <D extends AnyObjectOrUndefined = undefined, E extends AnyObjectOrUndefined = undefined>(
       options: Optional<WXPageConstructorOptions<D>> & E
     ): void
   }

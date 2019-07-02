@@ -1,7 +1,15 @@
 const equalSymbol = Symbol("equal")
 const replaceSymbol = Symbol("replace")
 
-function deepDiff(newData: any, oldData: any): any {
+type AnyData = (AnyObject & { [replaceSymbol]?: boolean }) | undefined
+
+type EqualData = typeof equalSymbol
+type ReplaceValueData = number | null | string | undefined | Function | boolean
+type ReplacedObjectData = AnyObject & { [replaceSymbol]: true }
+type DiffObjectData = AnyObject & { [replaceSymbol]?: false }
+type DiffData = EqualData | ReplaceValueData | ReplacedObjectData | DiffObjectData
+
+function deepDiff(newData: AnyData, oldData: AnyData): DiffData {
   if (newData === oldData) {
     return equalSymbol
   }
@@ -13,7 +21,7 @@ function deepDiff(newData: any, oldData: any): any {
     return newData
   }
 
-  const diff: any = {}
+  const diff: DiffObjectData = {}
 
   Object.keys(newData).forEach(keyA => {
     const _diff = deepDiff(newData[keyA], oldData[keyA])
@@ -31,8 +39,14 @@ function deepDiff(newData: any, oldData: any): any {
   return diff
 }
 
-function genUpdatedPathAndValue(out: any, diff: any, parentPath: string) {
-  if (diff === null || typeof diff !== 'object' || diff[replaceSymbol]) {
+function genUpdatedPathAndValue(out: AnyObject, diff: DiffData, parentPath: string) {
+  if (diff === null || typeof diff !== 'object') {
+    out[parentPath] = diff
+    return
+  }
+
+  if(diff[replaceSymbol]) {
+    delete diff[replaceSymbol]
     out[parentPath] = diff
     return
   }
@@ -43,12 +57,17 @@ function genUpdatedPathAndValue(out: any, diff: any, parentPath: string) {
   })
 }
 
-export function genDiff(newData: any, oldData: any): any {
-  const ret = {}
+export function genDiff(newData: AnyData, oldData: AnyData): AnyObject {
+  const ret: AnyObject = {}
   const diff = deepDiff(newData, oldData)
 
-  if (diff === equalSymbol) {
+  if (diff === equalSymbol || diff === null || typeof diff !== 'object') {
     return ret
+  }
+
+  if (diff[replaceSymbol]) {
+    delete diff[replaceSymbol]
+    return diff
   }
 
   genUpdatedPathAndValue(ret, diff, '')

@@ -5880,6 +5880,8 @@ interface CallableFunction extends Function {
     * @param thisArg The object to be used as the this object.
     * @param args Argument values to be passed to the function.
     */
+  call<T, A, R>(this: (this: T, arg0: A) => R, thisArg: T, arg0: A): R;
+  call<T, A, B, R>(this: (this: T, arg0: A, arg1: B) => R, thisArg: T, arg0: A, arg1: B): R;
   call<T, A extends any[], R>(this: (this: T, ...args: A) => R, thisArg: T, ...args: A): R;
 
   /**

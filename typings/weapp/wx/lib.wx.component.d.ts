@@ -110,7 +110,7 @@ declare namespace Component {
     resize?(size: { width: number; height: number }): void
   }
 
-  interface WXComponentBehaviorConstructOptions<P extends AnyObject = any, D extends AnyObject = any> extends WXComponentLifeCycle {
+  interface WXComponentBehaviorConstructOptions<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentLifeCycle {
     behaviors?: (WXComponentBehavior | string)[]
 
     definitionFilter?: WXComponentDefinitionFilter
@@ -120,14 +120,14 @@ declare namespace Component {
      */
     properties?: P
 
-    data: D
+    data: NotOverlap<D, P>
 
     methods?: { [name: string]: WXComponentMethod }
   }
 
-  interface WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> extends WXComponentBehaviorConstructOptions<P, D>, WXComponentInstance<D> { }
+  interface WXComponentBehavior<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentBehaviorConstructOptions<P, D>, WXComponentInstance<P, D> { }
 
-  interface WXComponentInstance<D> {
+  interface WXComponentInstance<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> {
     /**
  * 组件的文件路径
  */
@@ -143,8 +143,8 @@ declare namespace Component {
      */
     dataset: { [k: string]: string }
 
-    setData<K extends keyof D>(
-      data: Pick<D, K> | { [keyPath: string]: any },
+    setData<K extends keyof NotOverlap<D, P>>(
+      data: Pick<NotOverlap<D, P>, K> | { [keyPath: string]: any },
       callback?: () => void
     ): void
 
@@ -173,7 +173,7 @@ declare namespace Component {
     getPageId(): string
   }
 
-  interface WXComponentConstructorOptions<P extends AnyObject = any, D extends AnyObject = any> extends WXComponentLifeCycle {
+  interface WXComponentConstructorOptions<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentLifeCycle {
     options?: WXComponentOptions
 
     externalClasses?: string[]
@@ -185,7 +185,7 @@ declare namespace Component {
      */
     properties?: P
 
-    data: D
+    data: NotOverlap<D, P>
 
     methods?: { [name: string]: WXComponentMethod }
 
@@ -200,7 +200,7 @@ declare namespace Component {
     relations?: { [k: string]: any }
   }
 
-  interface WXComponent<P extends AnyObject = any, D extends AnyObject = any> extends WXComponentConstructorOptions<P, D>, WXComponentInstance<D> { }
+  interface WXComponent<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentConstructorOptions<P, D>, WXComponentInstance<P, D> { }
 
   interface WXComponentConstructor {
     <P extends IAnyObject = any, D extends AnyObject = any, E extends AnyObject = any>(
@@ -209,7 +209,7 @@ declare namespace Component {
   }
 
   interface WXComponentBehaviorConstructor {
-    <P extends IAnyObject = any, D extends AnyObject = any, E extends AnyObject = any>(
+    <P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined, E extends AnyObject = {}>(
       options: Optional<WXComponentBehaviorConstructOptions<P, D>> & E
     ): WXComponentBehavior
   }
