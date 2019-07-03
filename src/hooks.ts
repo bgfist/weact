@@ -19,6 +19,7 @@ interface Ref<T = any> {
 }
 
 interface RendererHooksCtx<T extends HookProps = any> {
+  renderName: string,
   props: T
   oldData?: AnyObject
   rerenderTriggerringByProp: boolean
@@ -74,10 +75,10 @@ function splitDataAndMethod(def: AnyObject) {
 }
 
 function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newVal: any, oldVal: any) {
-  debug("PropChanged", newVal === oldVal || !this.$$hooksCtx ? '[rerender skipped]' : '')
+  debug("PropChanged", this.$$hooksCtx && this.$$hooksCtx.renderName, newVal === oldVal || !this.$$hooksCtx ? '[rerender skipped]' : '')
   if (newVal !== oldVal) {
     if (this.$$hooksCtx) {
-      debug("PropChanged:Rerender", newVal, this.$$hooksCtx.rerenderTriggerringByProp ? '[skipped]' : '')
+      debug("PropChanged:Rerender", this.$$hooksCtx.renderName, newVal, this.$$hooksCtx.rerenderTriggerringByProp ? '[skipped]' : '')
       if (!this.$$hooksCtx.rerenderTriggerringByProp) {
         this.$$hooksCtx.rerenderTriggerringByProp = true
         wx.nextTick(() => this.$$hooksCtx.rerenderTriggerringByProp = false)
@@ -216,22 +217,27 @@ export function usePrevious<T>(value: T) {
   return ref.current
 }
 
-export function useThisAsPage(func: (this: Page.WXPage, self?: Page.WXPage) => void) {
+type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
+
+export function useThisAsPage(func: (this: ChunkedPage, self?: ChunkedPage) => void) {
   assetRendering()
 
-  const inst = currentRenderer as Page.WXPage
+  const inst = currentRenderer as ChunkedPage
   return () => func.call(inst, inst)
 }
 
-export function useThisAsComp(func: (this: Component.WXComponent, self: Component.WXComponent) => void) {
+type ChunkedComp = Omit<Component.WXComponentInstance<any>, "setData">
+
+export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => void) {
   assetRendering()
 
-  const inst = currentRenderer as Component.WXComponent
+  const inst = currentRenderer as ChunkedComp
   return () => func.call(inst, inst)
 }
 
 function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, func: HookFunc<T, R>, props: T) {
   this.$$hooksCtx = {
+    renderName: func.name,
     props,
     oldData: undefined,
     rerenderTriggerringByProp: false,
@@ -247,7 +253,7 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
       currentRenderer = null
 
       const { data, methods } = splitDataAndMethod(newDef)
-      debug("NewDataAndMethods", data, methods)
+      debug("NewDataAndMethods", this.$$hooksCtx.renderName, data, methods)
 
       Object.keys(methods).forEach(key => {
         ; (this as any)[key] = methods[key]
@@ -271,15 +277,15 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
 
       const noUpdate = !Object.keys(diff).length
 
-      debug("setData", diff, noUpdate ? '[skipped]' : '')
+      debug("setData", this.$$hooksCtx.renderName, diff, noUpdate ? '[skipped]' : '')
 
       if (noUpdate) {
         triggerLayoutEffect()
         return
       }
 
-      this.setData(diff, () => {
-        debug("setData:updated")
+      this.setData(diff as any, () => {
+        debug("setData:updated", this.$$hooksCtx.renderName)
         triggerLayoutEffect()
       })
     }
@@ -299,24 +305,48 @@ function onDestroy(this: WXRenderer) {
   this.$$hooksCtx = null
 }
 
-type PageHookFunc = (options?: AnyObject) => HookReturn
+type PageHookFunc<R extends HookReturn> = (options?: AnyObject) => R
 
-export function FPage(func: PageHookFunc) {
+type PickDataFromHookReturn_<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? never : R[K] }
+type PickDataFromHookReturn<R extends AnyObject> = Readonly<PickDataFromHookReturn_<R>>
+type PickMethodsFromHookReturn<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? R[K] : never }
+
+type ExtraPageOptionsView<R> = ChunkedPage & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
+type ExtraPageOptions_ = Omit<Page.WXPageConstructorOptions,
+  | "data" // these are provided by hookfunc
+  | "onLoad" | "onDestroy" // these can be mocked by useEffect
+>
+type ExtraPageOptions = Required<ExtraPageOptions_>
+type ExtraPageOptionsThis_<R> = { [K in keyof ExtraPageOptions]: ExtraPageOptions[K] extends AnyFunction ? (this: ExtraPageOptionsView<R>, ...args: Parameters<ExtraPageOptions[K]>) => ReturnType<ExtraPageOptions[K]> : ExtraPageOptions[K] }
+type ExtraPageOptionsThis<R> = Optional<ExtraPageOptionsThis_<R>>
+
+export function FPage<R extends HookReturn>(func: PageHookFunc<R>, extraOptions?: ExtraPageOptionsThis<R>) {
   // @ts-ignore
   return Page<any, WXRenderHooksCtx>({
     onLoad(options) {
-      onCreate.call(this, func, options)
+      onCreate.call(this, func as HookFunc<any, R>, options)
     },
     onUnload() {
       onDestroy.call(this)
-    }
+    },
+    ...extraOptions
   })
 }
 
-export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>): void
-export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T): void
+type ExtraCompOptionsView<R> = ChunkedComp & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
+type ExtraCompOptions_ = Omit<Component.WXComponentConstructorOptions,
+  | "data" | "properties" | "methods" | "observers" // these are provided by props and hookfunc
+  | "attached" | "detached" // these can be mocked by useEffect
+  | "behaviors" | "lifetimes" // these are forbidden
+>
+type ExtraCompOptions = Required<ExtraCompOptions_>
+type ExtraCompOptionsThis_<R> = { [K in keyof ExtraCompOptions]: ExtraCompOptions[K] extends AnyFunction ? (this: ExtraCompOptionsView<R>, ...args: Parameters<ExtraCompOptions[K]>) => ReturnType<ExtraCompOptions[K]> : ExtraCompOptions[K] }
+type ExtraCompOptionsThis<R> = Optional<ExtraCompOptionsThis_<R>>
 
-export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T) {
+export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>, extraOptions?: ExtraCompOptionsThis<R>): void
+export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T, extraOptions?: ExtraCompOptionsThis<R>): void
+
+export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
   const properties = transformProperties(defaultProps)
   const propertyKeys: string[] = []
   for (const k in properties) {
@@ -331,7 +361,8 @@ export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<
     },
     detached() {
       onDestroy.call(this)
-    }
+    },
+    ...extraOptions
   })
 }
 
@@ -349,8 +380,8 @@ export function createHookRunner<T extends HookProps, R extends HookReturn>(hook
   }
 
   const proxy = new Proxy(mockRenderrer, {
-    get(target:any, key: string) {
-      if(key in target) {
+    get(target: any, key: string) {
+      if (key in target) {
         return target[key]
       }
       return endlessProxy

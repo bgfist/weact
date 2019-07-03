@@ -57,13 +57,13 @@ class WXComponent<P extends AnyObject = never, D extends AnyObject = never, A ex
     })
     props = injectActions(props)
 
-    debug("Component:options", props)
+    debug("Component:options", (this as any).__proto__.constructor.name, props)
 
     Component(props)
   }
 }
 
-interface WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> extends Component.WXComponentBehavior<P, D> {}
+interface WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> extends Component.WXComponentBehavior<P, D> { }
 
 class WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> {
   public init(connect: AnyFunction = identity) {
@@ -91,7 +91,7 @@ class WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any> 
     })
     props = injectActions(props)
 
-    debug("Behavior:options", props)
+    debug("Behavior:options", (this as any).__proto__.constructor.name, props)
 
     return Behavior(props)
   }

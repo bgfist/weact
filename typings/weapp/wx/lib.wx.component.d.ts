@@ -143,8 +143,8 @@ declare namespace Component {
      */
     dataset: { [k: string]: string }
 
-    setData<K extends keyof NotOverlap<D, P>>(
-      data: Pick<NotOverlap<D, P>, K> | { [keyPath: string]: any },
+    setData(
+      data: Optional<NotOverlap<D, P>> & AnyObject,
       callback?: () => void
     ): void
 

@@ -16,7 +16,7 @@ class WXPage<D extends AnyObject = never, A extends AnyObject = never> {
     props = connect(props)
     props = injectActions(props)
 
-    debug("Page:options", props)
+    debug("Page:options", (this as any).__proto__.constructor.name, props)
 
     Page(props)
   }
