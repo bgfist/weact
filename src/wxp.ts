@@ -6,15 +6,15 @@ interface PromisableParam {
 }
 
 interface SuccessCallBackParamWithData {
-  data: object
+  data: any
 }
 
 interface SuccessCallBackParamWithRes {
-  res: object
+  res: any
 }
 
 interface SuccessCallBackParamWithResult {
-  result: object
+  result: any
 }
 
 type PromiseValue_<C extends PromisableParam> = Parameters<Exclude<C["success"], undefined>>[0]
@@ -49,7 +49,7 @@ for (const $key in wx) {
     // @ts-ignore
     wxp[key] = (options: any) =>
       new Promise((resolve, reject) => {
-        options.success = ({ res, result }: any) => resolve(res || result)
+        options.success = ({ data, res, result }: any) => resolve(data || res || result)
         options.fail = (err: any) => {
           console.error(err.errMsg)
           reject(err)
