@@ -314,7 +314,7 @@ type PickMethodsFromHookReturn<R extends AnyObject> = { [K in keyof R]: R[K] ext
 type ExtraPageOptionsView<R> = ChunkedPage & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
 type ExtraPageOptions_ = Omit<Page.WXPageConstructorOptions,
   | "data" // these are provided by hookfunc
-  | "onLoad" | "onDestroy" // these can be mocked by useEffect
+  | "onLoad" | "onUnload" // these can be mocked by useEffect
 >
 type ExtraPageOptions = Required<ExtraPageOptions_>
 type ExtraPageOptionsThis_<R> = { [K in keyof ExtraPageOptions]: ExtraPageOptions[K] extends AnyFunction ? (this: ExtraPageOptionsView<R>, ...args: Parameters<ExtraPageOptions[K]>) => ReturnType<ExtraPageOptions[K]> : ExtraPageOptions[K] }
