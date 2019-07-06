@@ -21,6 +21,13 @@ function deepDiff(newData: AnyData, oldData: AnyData): DiffData {
     return newData
   }
 
+  // 对数组不做diff，目前微信支持不是很好
+  if (Array.isArray(newData) || Array.isArray(oldData)) {
+    // @ts-ignore
+    newData[replaceSymbol] = true
+    return newData
+  }
+
   const diff: DiffObjectData = {}
 
   Object.keys(newData).forEach(keyA => {
@@ -45,7 +52,7 @@ function genUpdatedPathAndValue(out: AnyObject, diff: DiffData, parentPath: stri
     return
   }
 
-  if(diff[replaceSymbol]) {
+  if (diff[replaceSymbol]) {
     delete diff[replaceSymbol]
     out[parentPath] = diff
     return

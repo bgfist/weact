@@ -10,12 +10,12 @@ interface HookRecords<T> {
 }
 
 type UpdaterParam<T> = T | ((prev: T) => T)
-type Updater<T> = (value: UpdaterParam<T>) => void
+export type Updater<T> = (value: UpdaterParam<T>) => void
 
-type UnLoad = (() => void) | void
+type UnLoad = any
 
 interface Ref<T = any> {
-  current?: T
+  current: T
 }
 
 interface RendererHooksCtx<T extends HookProps = any> {
@@ -88,13 +88,15 @@ function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newV
   }
 }
 
-export function useState<T>(initValue: T): [T, Updater<T>] {
+export function useState<T>(): [T | undefined, Updater<T | undefined>]
+export function useState<T>(initValue: T): [T, Updater<T>]
+export function useState<T>(initValue?: T): [T, Updater<T>] {
   assetRendering()
 
   const inst = currentRenderer!
   const cursor = hookCursor++
 
-  if (inst.$$hooksCtx.state[cursor] === undefined) {
+  if (!(cursor in inst.$$hooksCtx.state)) {
     inst.$$hooksCtx.state[cursor] = initValue
   }
 
@@ -144,7 +146,7 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[]) {
       }
     }
 
-    if (effect.unload) {
+    if (typeof effect.unload === "function") {
       effect.unload.call(null)
     }
     effect.unload = effectFunc.call(null)
@@ -177,10 +179,12 @@ export function useMemo<T>(create: () => T, inputs?: any[]): T {
   return inst.$$hooksCtx.memo[cursor]
 }
 
-export function useCallback<T>(callback: () => T, inputs?: any[]) {
+export function useCallback(callback: AnyFunction, inputs?: any[]) {
   return useMemo(() => callback, inputs)
 }
 
+export function useRef<T>(): Ref<T | undefined>
+export function useRef<T>(initValue: T): Ref<T>
 export function useRef<T>(initValue?: T): Ref<T> {
   assetRendering()
 
@@ -219,19 +223,33 @@ export function usePrevious<T>(value: T) {
 
 type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
 
-export function useThisAsPage(func: (this: ChunkedPage, self?: ChunkedPage) => void) {
+export function useThisAsPage(): ChunkedPage
+export function useThisAsPage(func: (this: ChunkedPage, self: ChunkedPage) => any): AnyFunction
+export function useThisAsPage(func?: (this: ChunkedPage, self: ChunkedPage) => any) {
   assetRendering()
 
   const inst = currentRenderer as ChunkedPage
+
+  if (!func) {
+    return inst
+  }
+
   return () => func.call(inst, inst)
 }
 
 type ChunkedComp = Omit<Component.WXComponentInstance<any>, "setData">
 
-export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => void) {
+export function useThisAsComp(): ChunkedComp
+export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => any): AnyFunction
+export function useThisAsComp(func?: (this: ChunkedComp, self: ChunkedComp) => any) {
   assetRendering()
 
   const inst = currentRenderer as ChunkedComp
+
+  if (!func) {
+    return inst
+  }
+
   return () => func.call(inst, inst)
 }
 
@@ -347,7 +365,7 @@ export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<
 export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T, extraOptions?: ExtraCompOptionsThis<R>): void
 
 export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
-  const properties = transformProperties(defaultProps)
+  const properties: any = transformProperties(defaultProps)
   const propertyKeys: string[] = []
   for (const k in properties) {
     properties[k].observer = propChangeObserver

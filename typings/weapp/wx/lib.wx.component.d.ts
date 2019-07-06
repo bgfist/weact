@@ -209,7 +209,7 @@ declare namespace Component {
   }
 
   interface WXComponentBehaviorConstructor {
-    <P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined, E extends AnyObject = {}>(
+    <P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined, E extends AnyObject = any>(
       options: Optional<WXComponentBehaviorConstructOptions<P, D>> & E
     ): WXComponentBehavior
   }

@@ -1,6 +1,6 @@
 declare namespace wx {
   interface DataSet {
-    [k: string]: string
+    [k: string]: any
   }
 
   interface EventTarget {
@@ -14,6 +14,10 @@ declare namespace wx {
     target: EventTarget
     currentTarget: EventTarget
     mark: DataSet
+  }
+
+  interface CustomEvent extends BaseEvent {
+    detail: any
   }
 
   interface Touch {

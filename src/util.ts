@@ -11,9 +11,9 @@ export function collectClassProps(obj: any, ...excludes: string[]) {
   return props
 }
 
-export function splitFieldsAndMethods(obj: any) {
-  const fields: any = {}
-  const methods: any = {}
+export function splitFieldsAndMethods(obj: AnyObject) {
+  const fields: AnyObject = {}
+  const methods: AnyObject = {}
   for (const k in obj) {
     if (typeof obj[k] === "function") {
       methods[k] = obj[k]
@@ -27,11 +27,13 @@ export function splitFieldsAndMethods(obj: any) {
   }
 }
 
-export function identity<T = any>(t: T) {
+export type ConnectFunc<C = any> = (c: C, isComponent: boolean) => C
+
+export function identity<T = any>(t: T, isComponent = false) {
   return t
 }
 
-export const endlessProxy: any = new Proxy(()=> {}, {
+export const endlessProxy: any = new Proxy(() => { }, {
   get() {
     return endlessProxy
   },
@@ -40,12 +42,12 @@ export const endlessProxy: any = new Proxy(()=> {}, {
   }
 })
 
-export function transformProperties(properties: any) {
+export function transformProperties(properties: AnyObject | undefined) {
   if (!properties) {
     return
   }
 
-  return Object.keys(properties).reduce((obj: any, key) => {
+  return Object.keys(properties).reduce((obj: AnyObject, key) => {
     const value = properties[key]
 
     let type: any
