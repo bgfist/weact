@@ -107,3 +107,26 @@ All supported hooks are listed below, peek their code annotation for a detail ex
 - usePrevious
 - useThisAsPage
 - useThisAsComp
+
+## debug and test
+```ts
+import { debugWeact } from "@bgfist/weact"
+
+debugWeact()
+```
+
+```ts
+import { createHookRunner, diffHookReturnData } from "@bgfist/weact"
+
+const runner = createHookRunner(hook, props)
+```
+
+## wxp
+
+wxp is a util for making promisified call  to wx api.
+
+```ts
+import { wxp } from "@bgfist/weact"
+
+wxp.request().then(...)
+```

@@ -281,7 +281,7 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
         Object.keys(this.$$hooksCtx.layoutEffect).forEach(key => {
           const { effectFunc, unload } = this.$$hooksCtx.layoutEffect[key]
           if (effectFunc) {
-            if (unload) {
+            if (typeof unload === "function") {
               unload.call(null)
             }
             this.$$hooksCtx.layoutEffect[key].unload = effectFunc.call(null)
@@ -319,11 +319,18 @@ function onDestroy(this: WXRenderer) {
       unload.call(null)
     }
   })
+  Object.keys(this.$$hooksCtx.layoutEffect).forEach(key => {
+    const effect = this.$$hooksCtx.layoutEffect[key]
+    const unload = effect.unload
+    if (typeof unload === "function") {
+      unload.call(null)
+    }
+  })
   // @ts-ignore
   this.$$hooksCtx = null
 }
 
-type PageHookFunc<R extends HookReturn> = (options?: AnyObject) => R
+type PageHookFunc<R extends HookReturn> = (options: any) => R
 
 type PickDataFromHookReturn_<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? never : R[K] }
 type PickDataFromHookReturn<R extends AnyObject> = Readonly<PickDataFromHookReturn_<R>>
