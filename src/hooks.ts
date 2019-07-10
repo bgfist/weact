@@ -35,6 +35,7 @@ interface RendererHooksCtx<T extends HookProps = any> {
   }>
   memo: HookRecords<any>
   ref: HookRecords<Ref>
+  batchUpdating: boolean
 }
 
 interface WXRenderHooksCtx<T extends HookProps = any> {
@@ -106,7 +107,9 @@ export function useState<T>(initValue?: T): [T, Updater<T>] {
     } else {
       inst.$$hooksCtx.state[cursor] = value
     }
-    inst.$$hooksCtx.rerender()
+    if (!inst.$$hooksCtx.batchUpdating) {
+      inst.$$hooksCtx.rerender()
+    }
   }
 
   return [inst.$$hooksCtx.state[cursor], updater]
@@ -116,7 +119,7 @@ export function useState<T>(initValue?: T): [T, Updater<T>] {
  *
  * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
  */
-export function useEffect(effectFunc: () => UnLoad, deps?: any[]) {
+export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = false) {
   assetRendering()
 
   const inst = currentRenderer!
@@ -124,10 +127,16 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[]) {
   const effect = inst.$$hooksCtx.effect[cursor]
 
   if (effect === undefined) {
-    // 初次渲染
-    inst.$$hooksCtx.effect[cursor] = {
-      unload: effectFunc.call(null),
-      lastDeps: deps
+    if (onlyUpdate) {
+      inst.$$hooksCtx.effect[cursor] = {
+        unload: undefined,
+        lastDeps: deps
+      }
+    } else {
+      inst.$$hooksCtx.effect[cursor] = {
+        unload: effectFunc.call(null),
+        lastDeps: deps
+      }
     }
   } else {
     const lastDeps = effect.lastDeps || []
@@ -153,7 +162,7 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[]) {
   }
 }
 
-export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[]) {
+export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = false) {
   assetRendering()
 
   const inst = currentRenderer!
@@ -163,7 +172,7 @@ export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[]) {
   }
   useEffect(() => {
     inst.$$hooksCtx.layoutEffect[cursor].effectFunc = effectFunc
-  }, deps)
+  }, deps, onlyUpdate)
 }
 
 export function useMemo<T>(create: () => T, inputs?: any[]): T {
@@ -221,6 +230,37 @@ export function usePrevious<T>(value: T) {
   return ref.current
 }
 
+
+export function useOnce(func: AnyFunction, condition?: boolean) {
+  const invoked = useRef(false)
+  if (!invoked.current && (condition === undefined || condition)) {
+    invoked.current = true
+    return func.call(null)
+  }
+}
+
+
+export function useBatchUpdate<A, B>(updaterA: Updater<A>, updaterB: Updater<B>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>) => void
+export function useBatchUpdate<A, B, C>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>) => void
+export function useBatchUpdate<A, B, C, D>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>) => void
+export function useBatchUpdate<A, B, C, D, E>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>) => void
+export function useBatchUpdate<A, B, C, D, E, F>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>, updaterF: Updater<F>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>, valueF: UpdaterParam<F>) => void
+export function useBatchUpdate<A, B, C, D, E, F, G>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>, updaterF: Updater<F>, updaterG: Updater<G>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>, valueF: UpdaterParam<F>, valueG: UpdaterParam<G>) => void
+export function useBatchUpdate<T>(...updaters: Array<Updater<T>>): (...values: Array<UpdaterParam<T>>) => void
+export function useBatchUpdate(...updaters: Array<Updater<any>>) {
+  assetRendering()
+
+  const inst = currentRenderer!
+
+  return (...values: Array<UpdaterParam<any>>) => {
+    inst.$$hooksCtx.batchUpdating = true
+    updaters.forEach((updater, i) => updater.call(null, values[i]))
+    inst.$$hooksCtx.batchUpdating = false
+    inst.$$hooksCtx.rerender()
+  }
+}
+
+
 type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
 
 export function useThisAsPage(): ChunkedPage
@@ -264,6 +304,7 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
     layoutEffect: {},
     memo: {},
     ref: {},
+    batchUpdating: false,
     rerender: () => {
       currentRenderer = this
       hookCursor = 0
