@@ -70,7 +70,7 @@ interface WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = a
 }
 
 class WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any, A extends AnyObject = never> {
-  public init(connect: ConnectFunc<WXComponentBehaviorOptions> = identity) {
+  public init(connect: ConnectFunc = identity) {
     let props: WXComponentBehaviorOptions = collectClassProps(this, "init")
 
     checkCreatedProp(props)

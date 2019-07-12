@@ -90,15 +90,15 @@ function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newV
 }
 
 export function useState<T>(): [T | undefined, Updater<T | undefined>]
-export function useState<T>(initValue: T): [T, Updater<T>]
-export function useState<T>(initValue?: T): [T, Updater<T>] {
+export function useState<T>(initValue: T | ((...args: any[]) => T)): [T, Updater<T>]
+export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Updater<T>] {
   assetRendering()
 
   const inst = currentRenderer!
   const cursor = hookCursor++
 
   if (!(cursor in inst.$$hooksCtx.state)) {
-    inst.$$hooksCtx.state[cursor] = initValue
+    inst.$$hooksCtx.state[cursor] = typeof initValue === 'function' ? initValue.call(null) : initValue
   }
 
   const updater = (value: UpdaterParam<T>) => {
@@ -162,7 +162,7 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = f
   }
 }
 
-export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = false) {
+export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
   const inst = currentRenderer!
@@ -412,7 +412,7 @@ type ExtraCompOptions = Required<ExtraCompOptions_>
 type ExtraCompOptionsThis_<R> = { [K in keyof ExtraCompOptions]: ExtraCompOptions[K] extends AnyFunction ? (this: ExtraCompOptionsView<R>, ...args: Parameters<ExtraCompOptions[K]>) => ReturnType<ExtraCompOptions[K]> : ExtraCompOptions[K] }
 type ExtraCompOptionsThis<R> = Optional<ExtraCompOptionsThis_<R>>
 
-export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>, extraOptions?: ExtraCompOptionsThis<R>): void
+export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>): void
 export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T, extraOptions?: ExtraCompOptionsThis<R>): void
 
 export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
