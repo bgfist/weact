@@ -21,25 +21,34 @@ function deepDiff(newData: AnyData, oldData: AnyData): DiffData {
     return newData
   }
 
-  // 对数组不做diff，目前微信支持不是很好
-  if (Array.isArray(newData) || Array.isArray(oldData)) {
-    // @ts-ignore
+  // 如果删除了字段，直接传全部
+  let keyDeleted = false
+  const oldKeys = Object.keys(oldData)
+  for (let i = 0; i < oldKeys.length; i++) {
+    if (!(oldKeys[i] in newData)) {
+      keyDeleted = true
+      break
+    }
+  }
+  if (keyDeleted) {
     newData[replaceSymbol] = true
     return newData
   }
 
-  const diff: DiffObjectData = {}
+  const newDataIsArray = Array.isArray(newData)
+  const oldDataIsArray = Array.isArray(oldData)
+
+  if ((newDataIsArray && !oldDataIsArray) || (!newDataIsArray && oldDataIsArray)) {
+    newData[replaceSymbol] = true
+    return newData
+  }
+
+  const diff: DiffObjectData = newDataIsArray ? [] : {}
 
   Object.keys(newData).forEach(keyA => {
     const _diff = deepDiff(newData[keyA], oldData[keyA])
     if (_diff !== equalSymbol) {
       diff[keyA] = _diff
-    }
-  })
-
-  Object.keys(oldData).forEach(keyB => {
-    if (!(keyB in newData)) {
-      diff[keyB] = undefined
     }
   })
 
@@ -58,8 +67,10 @@ function genUpdatedPathAndValue(out: AnyObject, diff: DiffData, parentPath: stri
     return
   }
 
+  const diffIsArray = Array.isArray(diff)
+
   Object.keys(diff).forEach(key => {
-    const path = parentPath ? parentPath + '.' + key : key
+    const path = !parentPath ? key : (diffIsArray ? `${parentPath}[${key}]` : `${parentPath}.${key}`)
     genUpdatedPathAndValue(out, diff[key], path)
   })
 }

@@ -1,8 +1,8 @@
 /// <reference path="../typings/weapp/index.d.ts" />
 
-import { transformProperties, endlessProxy } from "./util"
+import { transformProperties, endlessProxy, deepCopy } from "./util"
 import { genDiff } from './diff'
-import { debug } from './debug'
+import { debug, debugIt } from './debug'
 
 interface HookRecords<T> {
   [index: number]: T
@@ -221,13 +221,11 @@ export function useReducer<S, I, A>(reducer: (state: S, action: A) => S, initial
 }
 
 export function usePrevious<T>(value: T) {
-  const ref = useRef<T>()
+  const previous = useRef<T>()
+  const previousValue = previous.current
+  previous.current = value
 
-  useEffect(() => {
-    ref.current = value
-  })
-
-  return ref.current
+  return previousValue
 }
 
 
@@ -312,7 +310,10 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
       currentRenderer = null
 
       const { data, methods } = splitDataAndMethod(newDef)
-      debug("NewDataAndMethods", this.$$hooksCtx.renderName, data, methods)
+
+      if (debugIt()) {
+        debug("NewDataAndMethods", this.$$hooksCtx.renderName, deepCopy(data), methods)
+      }
 
       Object.keys(methods).forEach(key => {
         ; (this as any)[key] = methods[key]
@@ -336,7 +337,9 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
 
       const noUpdate = !Object.keys(diff).length
 
-      debug("setData", this.$$hooksCtx.renderName, diff, noUpdate ? '[skipped]' : '')
+      if (debugIt()) {
+        debug("setData", this.$$hooksCtx.renderName, deepCopy(diff), noUpdate ? '[skipped]' : '')
+      }
 
       if (noUpdate) {
         triggerLayoutEffect()

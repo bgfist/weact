@@ -85,3 +85,7 @@ export function transformProperties(properties: AnyObject | undefined) {
     return obj
   }, {})
 }
+
+export function deepCopy(obj: any) {
+  return JSON.parse(JSON.stringify(obj))
+}
