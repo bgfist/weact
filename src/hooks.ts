@@ -116,10 +116,14 @@ export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Update
 }
 
 /**
- *
+ * 与react-hooks的useEffect有执行时机的区别，effectFunc直接在当前render函数中执行，
+ * 所以不要在effectFunc中同步更新数据
+ * 
+ * @param effectFunc 在每次依赖变化时执行的副作用函数，
  * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
+ * @param onlyUpdate 仅在更新时触发，初始时不触发
  */
-export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = false) {
+export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
   const inst = currentRenderer!
@@ -162,6 +166,9 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate = f
   }
 }
 
+/**
+ * 与react-hooks的useLayoutEffect有执行时机的区别，effectFunc将在视图刷新后执行
+ */
 export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
@@ -228,16 +235,22 @@ export function usePrevious<T>(value: T) {
   return previousValue
 }
 
-
-export function useOnce(func: AnyFunction, condition?: boolean) {
+/**
+ * 让函数在条件满足时(只)执行一次
+ * 
+ * @param condition 满足条件，不传默认为true
+ */
+export function useOnce(func: AnyFunction, condition = true) {
   const invoked = useRef(false)
-  if (!invoked.current && (condition === undefined || condition)) {
+  if (!invoked.current && condition) {
     invoked.current = true
     return func.call(null)
   }
 }
 
-
+/**
+ * 批量更新数据
+ */
 export function useBatchUpdate<A, B>(updaterA: Updater<A>, updaterB: Updater<B>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>) => void
 export function useBatchUpdate<A, B, C>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>) => void
 export function useBatchUpdate<A, B, C, D>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>) => void
@@ -261,6 +274,11 @@ export function useBatchUpdate(...updaters: Array<Updater<any>>) {
 
 type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
 
+/**
+ * 获取当前page实例(阉割版，只有部分方法和属性)
+ * - 不传func则直接返回page实例
+ * - 传func，则func的第一个参数是page实例，useThisAsPage将返回func函数的返回
+ */
 export function useThisAsPage(): ChunkedPage
 export function useThisAsPage(func: (this: ChunkedPage, self: ChunkedPage) => any): AnyFunction
 export function useThisAsPage(func?: (this: ChunkedPage, self: ChunkedPage) => any) {
@@ -277,6 +295,11 @@ export function useThisAsPage(func?: (this: ChunkedPage, self: ChunkedPage) => a
 
 type ChunkedComp = Omit<Component.WXComponentInstance<any>, "setData">
 
+/**
+ * 获取当前component实例(阉割版，只有部分方法和属性)
+ * - 不传func则直接返回component实例
+ * - 传func，则func的第一个参数是component实例，useThisAsComp将返回func函数的返回
+ */
 export function useThisAsComp(): ChunkedComp
 export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => any): AnyFunction
 export function useThisAsComp(func?: (this: ChunkedComp, self: ChunkedComp) => any) {
@@ -291,9 +314,9 @@ export function useThisAsComp(func?: (this: ChunkedComp, self: ChunkedComp) => a
   return () => func.call(inst, inst)
 }
 
-function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, func: HookFunc<T, R>, props: T) {
+function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, hook: HookFunc<T, R>, props: T) {
   this.$$hooksCtx = {
-    renderName: func.name,
+    renderName: hook.name,
     props,
     oldData: undefined,
     rerenderTriggerringByProp: false,
@@ -306,7 +329,7 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
     rerender: () => {
       currentRenderer = this
       hookCursor = 0
-      const newDef = (func.call(null, this.$$hooksCtx.props) || {}) as AnyObject
+      const newDef = (hook.call(null, this.$$hooksCtx.props) || {}) as AnyObject
       currentRenderer = null
 
       const { data, methods } = splitDataAndMethod(newDef)
@@ -389,11 +412,17 @@ type ExtraPageOptions = Required<ExtraPageOptions_>
 type ExtraPageOptionsThis_<R> = { [K in keyof ExtraPageOptions]: ExtraPageOptions[K] extends AnyFunction ? (this: ExtraPageOptionsView<R>, ...args: Parameters<ExtraPageOptions[K]>) => ReturnType<ExtraPageOptions[K]> : ExtraPageOptions[K] }
 type ExtraPageOptionsThis<R> = Optional<ExtraPageOptionsThis_<R>>
 
-export function FPage<R extends HookReturn>(func: PageHookFunc<R>, extraOptions?: ExtraPageOptionsThis<R>) {
+/**
+ * 注册一个页面
+ * 
+ * @param hook 页面的render函数
+ * @param extraOptions 其他选项，参见Page(options)
+ */
+export function FPage<R extends HookReturn>(hook: PageHookFunc<R>, extraOptions?: ExtraPageOptionsThis<R>) {
   // @ts-ignore
   return Page<any, WXRenderHooksCtx>({
     onLoad(options) {
-      onCreate.call(this, func as HookFunc<any, R>, options)
+      onCreate.call(this, hook as HookFunc<any, R>, options)
     },
     onUnload() {
       onDestroy.call(this)
@@ -412,10 +441,16 @@ type ExtraCompOptions = Required<ExtraCompOptions_>
 type ExtraCompOptionsThis_<R> = { [K in keyof ExtraCompOptions]: ExtraCompOptions[K] extends AnyFunction ? (this: ExtraCompOptionsView<R>, ...args: Parameters<ExtraCompOptions[K]>) => ReturnType<ExtraCompOptions[K]> : ExtraCompOptions[K] }
 type ExtraCompOptionsThis<R> = Optional<ExtraCompOptionsThis_<R>>
 
+/**
+ * 注册一个组件
+ * 
+ * @param hook 组件的render函数
+ * @param defaultProps 组件的默认属性
+ * @param extraOptions 组件的其他选项，参见Component(options)
+ */
 export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>): void
 export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T, extraOptions?: ExtraCompOptionsThis<R>): void
-
-export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
+export function FComp<T extends HookProps, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
   const properties: any = transformProperties(defaultProps)
   const propertyKeys: string[] = []
   for (const k in properties) {
@@ -426,7 +461,7 @@ export function FComp<T extends HookProps, R extends HookReturn>(func: HookFunc<
   return Component<T, any, WXRenderHooksCtx>({
     properties,
     attached() {
-      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, func, this.properties)
+      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, hook, this.properties)
     },
     detached() {
       onDestroy.call(this)

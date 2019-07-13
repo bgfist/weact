@@ -1,3 +1,7 @@
+/**
+ * 将wx的回调函数式api转成promise形式
+ */
+
 interface PromisableParam {
   success?: AnyFunction
   fail?: AnyFunction
