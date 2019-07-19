@@ -365,7 +365,7 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
       }
 
       if (noUpdate) {
-        triggerLayoutEffect()
+        wx.nextTick(() => triggerLayoutEffect())
         return
       }
 
