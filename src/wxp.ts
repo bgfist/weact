@@ -1,7 +1,3 @@
-/**
- * 将wx的回调函数式api转成promise形式
- */
-
 interface PromisableParam {
   success?: AnyFunction
   fail?: AnyFunction
@@ -43,6 +39,12 @@ type PromisableFunc<F> = F extends AnyFunction
 
 type WxPromisedApi<O> = { [K in keyof O]: PromisableFunc<O[K]> }
 
+/**
+* 将wx的回调函数式api转成promise形式
+* ```ts
+* wxp.request({url: ...}).then(res=> )  // res已经解包(不需要再`res.data`了)，是success回调返回的值的三个字段之一 "data" | "res" | "result"
+* ```
+*/
 // @ts-ignore
 const wxp: WxPromisedApi<typeof wx> = {}
 

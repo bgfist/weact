@@ -250,6 +250,17 @@ export function useOnce(func: AnyFunction, condition = true) {
 
 /**
  * 批量更新数据
+ * 
+ * @params 传入updater(setState返回的第二个参数)的数组
+ * 
+ * ```ts
+ * const [age, updateAge] = useState(0)
+ * const [name, updateName] = useState("weact")
+ * 
+ * const updateAgeAndName = useBatchUpdate(updateAge, updateName)
+ * // 然后像下面这样批量更新
+ * // updateAgeAndName(20, "react")
+ * ```
  */
 export function useBatchUpdate<A, B>(updaterA: Updater<A>, updaterB: Updater<B>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>) => void
 export function useBatchUpdate<A, B, C>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>) => void
@@ -470,6 +481,12 @@ export function FComp<T extends HookProps, R extends HookReturn>(hook: HookFunc<
   })
 }
 
+/**
+ * 创建一个用来跑hook测试的东西
+ * 
+ * @param hook 待测试的hook
+ * @param defaultProps hook的参数
+ */
 export function createHookRunner<T extends HookProps, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps: T) {
   // @ts-ignore
   const mockRenderrer: WXPage = {
@@ -507,6 +524,12 @@ export function createHookRunner<T extends HookProps, R extends HookReturn>(hook
   }
 }
 
+/**
+ * 比对两次调用hook的返回值差异
+ * 
+ * @param newRet hook最新的返回值
+ * @param oldRet hook之前的返回值
+ */
 export function diffHookReturnData(newRet: any, oldRet: any) {
   const { data: newData } = splitDataAndMethod(newRet || {})
   const { data: oldData } = splitDataAndMethod(oldRet || {})

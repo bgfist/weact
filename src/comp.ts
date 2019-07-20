@@ -11,6 +11,10 @@ type WXComponentOptions = Component.WXComponent<any, any> & AnyObject
 type WXComponentBehaviorOptions = Component.WXComponentBehavior<any, any> & AnyObject
 
 class WXComponent<P extends AnyObject = never, D extends AnyObject = never, A extends AnyObject = never> {
+  /**
+   * 调用小程序的Component函数注册一个组件,
+   * 类中声明的属性和方法都会传给Component函数
+   */
   public init(connect: ConnectFunc = identity) {
     let props: WXComponentOptions = collectClassProps(this, "init")
 
@@ -70,6 +74,12 @@ interface WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = a
 }
 
 class WXComponentBehavior<P extends AnyObject = any, D extends AnyObject = any, A extends AnyObject = never> {
+  /**
+   * 调用小程序的Behaviour函数注册一个mixin,
+   * 类中声明的属性和方法都会传给Behaviour函数
+   * 
+   * @returns 返回该mixin
+   */
   public init(connect: ConnectFunc = identity) {
     let props: WXComponentBehaviorOptions = collectClassProps(this, "init")
 

@@ -8,6 +8,10 @@ interface WXPage<D extends AnyObject = never, A extends AnyObject = never> exten
 }
 
 class WXPage<D extends AnyObject = never, A extends AnyObject = never> {
+  /**
+   * 调用小程序的Page函数注册一个页面,
+   * 类中声明的属性和方法都会传给Page函数
+   */
   public init(connect: AnyFunction = identity) {
     let props = collectClassProps(this, "init")
 
