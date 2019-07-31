@@ -5,7 +5,6 @@ import { genDiff } from './diff'
 import { debug, debugIt } from './debug'
 
 interface HookRecords<T> {
-  [index: number]: T
   [index: string]: T
 }
 
@@ -22,8 +21,8 @@ interface RendererHooksCtx<T extends HookProps = any> {
   renderName: string,
   props: T
   oldData?: AnyObject
-  rerenderTriggerringByProp: boolean
-  rerender: () => void
+  applyingPropChange: boolean
+  render: () => void
   state: HookRecords<any>
   effect: HookRecords<{
     unload: UnLoad
@@ -76,14 +75,16 @@ function splitDataAndMethod(def: AnyObject) {
 }
 
 function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newVal: any, oldVal: any) {
-  debug("PropChanged", this.$$hooksCtx && this.$$hooksCtx.renderName, newVal === oldVal || !this.$$hooksCtx ? '[rerender skipped]' : '')
+  debug("PropChanged", this.$$hooksCtx && this.$$hooksCtx.renderName, newVal === oldVal || !this.$$hooksCtx ? '[render skipped]' : '')
   if (newVal !== oldVal) {
     if (this.$$hooksCtx) {
-      debug("PropChanged:Rerender", this.$$hooksCtx.renderName, newVal, this.$$hooksCtx.rerenderTriggerringByProp ? '[skipped]' : '')
-      if (!this.$$hooksCtx.rerenderTriggerringByProp) {
-        this.$$hooksCtx.rerenderTriggerringByProp = true
-        wx.nextTick(() => this.$$hooksCtx.rerenderTriggerringByProp = false)
-        this.$$hooksCtx.rerender()
+      const hooksCtx = this.$$hooksCtx
+      debug("propChanged:render", hooksCtx.renderName, newVal, hooksCtx.applyingPropChange ? '[skipped]' : '')
+      // 加锁，多个属性同时改变会依次触发这个observer
+      if (!hooksCtx.applyingPropChange) {
+        hooksCtx.applyingPropChange = true
+        wx.nextTick(() => hooksCtx.applyingPropChange = false)
+        hooksCtx.render()
       }
     }
   }
@@ -94,50 +95,47 @@ export function useState<T>(initValue: T | ((...args: any[]) => T)): [T, Updater
 export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Updater<T>] {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
 
-  if (!(cursor in inst.$$hooksCtx.state)) {
-    inst.$$hooksCtx.state[cursor] = typeof initValue === 'function' ? initValue.call(null) : initValue
+  if (!(cursor in hooksCtx.state)) {
+    hooksCtx.state[cursor] = typeof initValue === 'function' ? initValue.call(null) : initValue
   }
 
   const updater = (value: UpdaterParam<T>) => {
     if (typeof value === "function") {
-      inst.$$hooksCtx.state[cursor] = value.call(null, inst.$$hooksCtx.state[cursor])
+      hooksCtx.state[cursor] = value.call(null, hooksCtx.state[cursor])
     } else {
-      inst.$$hooksCtx.state[cursor] = value
+      hooksCtx.state[cursor] = value
     }
-    if (!inst.$$hooksCtx.batchUpdating) {
-      inst.$$hooksCtx.rerender()
+    if (!hooksCtx.batchUpdating) {
+      hooksCtx.render()
     }
   }
 
-  return [inst.$$hooksCtx.state[cursor], updater]
+  return [hooksCtx.state[cursor], updater]
 }
 
 /**
- * 与react-hooks的useEffect有执行时机的区别，effectFunc直接在当前render函数中执行，
- * 所以不要在effectFunc中同步更新数据
- * 
- * @param effectFunc 在每次依赖变化时执行的副作用函数，
+ * @param effectFunc 在每次依赖变化时执行的副作用函数，effectFunc直接在当前render函数中执行，
  * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
  * @param onlyUpdate 仅在更新时触发，初始时不触发
  */
-export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
+function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
-  const effect = inst.$$hooksCtx.effect[cursor]
+  const effect = hooksCtx.effect[cursor]
 
   if (effect === undefined) {
     if (onlyUpdate) {
-      inst.$$hooksCtx.effect[cursor] = {
+      hooksCtx.effect[cursor] = {
         unload: undefined,
         lastDeps: deps
       }
     } else {
-      inst.$$hooksCtx.effect[cursor] = {
+      hooksCtx.effect[cursor] = {
         unload: effectFunc.call(null),
         lastDeps: deps
       }
@@ -166,33 +164,43 @@ export function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: b
   }
 }
 
-/**
- * 与react-hooks的useLayoutEffect有执行时机的区别，effectFunc将在视图刷新后执行
+/** 
+ * useLayoutEffect与useEffect的效果一样
+ * 
+ * @param effectFunc 在每次依赖变化时执行的副作用函数，将在视图刷新后执行
+ * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
+ * @param onlyUpdate 仅在更新时触发，初始时不触发
  */
 export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
-  if (!inst.$$hooksCtx.layoutEffect[cursor]) {
-    inst.$$hooksCtx.layoutEffect[cursor] = {}
+
+  if (!hooksCtx.layoutEffect[cursor]) {
+    hooksCtx.layoutEffect[cursor] = {}
   }
+
   useEffect(() => {
-    inst.$$hooksCtx.layoutEffect[cursor].effectFunc = effectFunc
+    hooksCtx.layoutEffect[cursor].effectFunc = effectFunc
   }, deps, onlyUpdate)
+}
+
+export {
+  useLayoutEffect as useEffect
 }
 
 export function useMemo<T>(create: () => T, inputs?: any[]): T {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
 
   useEffect(() => {
-    inst.$$hooksCtx.memo[cursor] = create()
+    hooksCtx.memo[cursor] = create()
   }, inputs)
 
-  return inst.$$hooksCtx.memo[cursor]
+  return hooksCtx.memo[cursor]
 }
 
 export function useCallback(callback: AnyFunction, inputs?: any[]) {
@@ -204,13 +212,14 @@ export function useRef<T>(initValue: T): Ref<T>
 export function useRef<T>(initValue?: T): Ref<T> {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
-  if (!inst.$$hooksCtx.ref[cursor]) {
-    inst.$$hooksCtx.ref[cursor] = { current: initValue }
+
+  if (!hooksCtx.ref[cursor]) {
+    hooksCtx.ref[cursor] = { current: initValue }
   }
 
-  return inst.$$hooksCtx.ref[cursor]
+  return hooksCtx.ref[cursor]
 }
 
 export function useReducer<S, I, A>(reducer: (state: S, action: A) => S, initialArg: I, init?: (initialArg: I) => S): [S, (action: A) => void] {
@@ -238,14 +247,18 @@ export function usePrevious<T>(value: T) {
 /**
  * 让函数在条件满足时(只)执行一次
  * 
- * @param condition 满足条件，不传默认为true
+ * @param func 将在render完之后执行
+ * @param condition 执行条件，不传默认为true
  */
 export function useOnce(func: AnyFunction, condition = true) {
   const invoked = useRef(false)
-  if (!invoked.current && condition) {
-    invoked.current = true
-    return func.call(null)
-  }
+
+  useLayoutEffect(() => {
+    if (!invoked.current && condition) {
+      invoked.current = true
+      func.call(null)
+    }
+  })
 }
 
 /**
@@ -272,13 +285,13 @@ export function useBatchUpdate<T>(...updaters: Array<Updater<T>>): (...values: A
 export function useBatchUpdate(...updaters: Array<Updater<any>>) {
   assetRendering()
 
-  const inst = currentRenderer!
+  const hooksCtx = currentRenderer!.$$hooksCtx
 
   return (...values: Array<UpdaterParam<any>>) => {
-    inst.$$hooksCtx.batchUpdating = true
+    hooksCtx.batchUpdating = true
     updaters.forEach((updater, i) => updater.call(null, values[i]))
-    inst.$$hooksCtx.batchUpdating = false
-    inst.$$hooksCtx.rerender()
+    hooksCtx.batchUpdating = false
+    hooksCtx.render()
   }
 }
 
@@ -288,7 +301,7 @@ type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
 /**
  * 获取当前page实例(阉割版，只有部分方法和属性)
  * - 不传func则直接返回page实例
- * - 传func，则func的第一个参数是page实例，useThisAsPage将返回func函数的返回
+ * - 传func，则func的第一个参数是page实例，useThisAsPage将返回func函数执行后的结果
  */
 export function useThisAsPage(): ChunkedPage
 export function useThisAsPage(func: (this: ChunkedPage, self: ChunkedPage) => any): AnyFunction
@@ -309,7 +322,7 @@ type ChunkedComp = Omit<Component.WXComponentInstance<any>, "setData">
 /**
  * 获取当前component实例(阉割版，只有部分方法和属性)
  * - 不传func则直接返回component实例
- * - 传func，则func的第一个参数是component实例，useThisAsComp将返回func函数的返回
+ * - 传func，则func的第一个参数是component实例，useThisAsComp将返回func函数执行后的结果
  */
 export function useThisAsComp(): ChunkedComp
 export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => any): AnyFunction
@@ -326,27 +339,35 @@ export function useThisAsComp(func?: (this: ChunkedComp, self: ChunkedComp) => a
 }
 
 function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, hook: HookFunc<T, R>, props: T) {
-  this.$$hooksCtx = {
+  let rendering = false
+
+  const hooksCtx: RendererHooksCtx<T> = this.$$hooksCtx = {
     renderName: hook.name,
     props,
     oldData: undefined,
-    rerenderTriggerringByProp: false,
+    applyingPropChange: false,
     state: [],
     effect: {},
     layoutEffect: {},
     memo: {},
     ref: {},
     batchUpdating: false,
-    rerender: () => {
+    render: () => {
+      if (rendering) {
+        throw new Error("嵌套调用hook，请检查hook中是否有同步调用update的操作，可使用wx.nextTick规避")
+      }
+
+      rendering = true
       currentRenderer = this
       hookCursor = 0
-      const newDef = (hook.call(null, this.$$hooksCtx.props) || {}) as AnyObject
+      const newDef = (hook.call(null, hooksCtx.props) || {}) as AnyObject
       currentRenderer = null
+      rendering = false
 
       const { data, methods } = splitDataAndMethod(newDef)
 
       if (debugIt()) {
-        debug("NewDataAndMethods", this.$$hooksCtx.renderName, deepCopy(data), methods)
+        debug("newDataAndMethods", hooksCtx.renderName, deepCopy(data), methods)
       }
 
       Object.keys(methods).forEach(key => {
@@ -354,25 +375,25 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
       })
 
       const triggerLayoutEffect = () => {
-        Object.keys(this.$$hooksCtx.layoutEffect).forEach(key => {
-          const { effectFunc, unload } = this.$$hooksCtx.layoutEffect[key]
+        Object.keys(hooksCtx.layoutEffect).forEach(key => {
+          const { effectFunc, unload } = hooksCtx.layoutEffect[key]
           if (effectFunc) {
             if (typeof unload === "function") {
               unload.call(null)
             }
-            this.$$hooksCtx.layoutEffect[key].unload = effectFunc.call(null)
-            this.$$hooksCtx.layoutEffect[key].effectFunc = undefined
+            hooksCtx.layoutEffect[key].effectFunc = undefined
+            hooksCtx.layoutEffect[key].unload = effectFunc.call(null)
           }
         })
       }
 
-      const diff = genDiff(data, this.$$hooksCtx.oldData)
-      this.$$hooksCtx.oldData = data
+      const diff = genDiff(data, hooksCtx.oldData)
+      hooksCtx.oldData = data
 
       const noUpdate = !Object.keys(diff).length
 
       if (debugIt()) {
-        debug("setData", this.$$hooksCtx.renderName, deepCopy(diff), noUpdate ? '[skipped]' : '')
+        debug("setData", hooksCtx.renderName, deepCopy(diff), noUpdate ? '[skipped]' : '')
       }
 
       if (noUpdate) {
@@ -381,29 +402,32 @@ function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>
       }
 
       this.setData(diff as any, () => {
-        debug("setData:updated", this.$$hooksCtx.renderName)
+        debug("setData:updated", hooksCtx.renderName)
         triggerLayoutEffect()
       })
     }
   }
-  this.$$hooksCtx.rerender()
+  hooksCtx.render()
 }
 
 function onDestroy(this: WXRenderer) {
-  Object.keys(this.$$hooksCtx.effect).forEach(key => {
-    const effect = this.$$hooksCtx.effect[key]
+  const hooksCtx = this.$$hooksCtx
+
+  Object.keys(hooksCtx.effect).forEach(key => {
+    const effect = hooksCtx.effect[key]
     const unload = effect.unload
     if (typeof unload === "function") {
       unload.call(null)
     }
   })
-  Object.keys(this.$$hooksCtx.layoutEffect).forEach(key => {
-    const effect = this.$$hooksCtx.layoutEffect[key]
+  Object.keys(hooksCtx.layoutEffect).forEach(key => {
+    const effect = hooksCtx.layoutEffect[key]
     const unload = effect.unload
     if (typeof unload === "function") {
       unload.call(null)
     }
   })
+
   // @ts-ignore
   this.$$hooksCtx = null
 }
@@ -519,13 +543,13 @@ export function createHookRunner<T extends HookProps, R extends HookReturn>(hook
       if (props) {
         proxy.$$hooksCtx.props = props
       }
-      proxy.$$hooksCtx.rerender()
+      proxy.$$hooksCtx.render()
     }
   }
 }
 
 /**
- * 比对两次调用hook的返回值差异
+ * 比对两次调用hook后的返回值的差异(仅比对数据，不比对方法)
  * 
  * @param newRet hook最新的返回值
  * @param oldRet hook之前的返回值
