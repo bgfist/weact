@@ -13,7 +13,7 @@ export type Updater<T> = (value: UpdaterParam<T>) => void
 
 type UnLoad = any
 
-interface Ref<T = any> {
+export interface Ref<T = any> {
   current: T
 }
 
@@ -245,7 +245,7 @@ export function usePrevious<T>(value: T) {
 }
 
 /**
- * 让函数在条件满足时(只)执行一次
+ * 让函数在条件满足时(只)执行一次，不提供condition参数时相当于useEffect(func, [])的简写
  * 
  * @param func 将在render完之后执行
  * @param condition 执行条件，不传默认为true
@@ -256,7 +256,7 @@ export function useOnce(func: AnyFunction, condition = true) {
   useLayoutEffect(() => {
     if (!invoked.current && condition) {
       invoked.current = true
-      func.call(null)
+      return func.call(null)
     }
   })
 }
