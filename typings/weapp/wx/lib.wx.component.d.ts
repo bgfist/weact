@@ -1,7 +1,7 @@
 declare namespace Component {
 
-  interface WXComponentMethod {
-    (...args: any[]): void
+  interface WXComponentMethods {
+    [name: string]: (...args: any[]) => void
   }
 
   interface WXComponentObserver {
@@ -116,7 +116,12 @@ declare namespace Component {
     resize?(size: { width: number; height: number }): void
   }
 
-  interface WXComponentBehaviorConstructOptions<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentLifeCycle {
+  type WXComponentBehaviourThisContext<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> = ThisType<WXComponentBehavior<P, D> & M>
+
+  /**
+   * 构建mixin的可选字段
+   */
+  interface WXComponentBehaviorConstructorOptions<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> {
     behaviors?: (WXComponentBehavior | string)[]
 
     definitionFilter?: WXComponentDefinitionFilter
@@ -128,12 +133,17 @@ declare namespace Component {
 
     data?: NotOverlap<D, P>
 
-    methods?: { [name: string]: WXComponentMethod } & ThisType<WXComponentBehavior<P, D>>
+    methods?: M & WXComponentBehaviourThisContext<P, D, M>
   }
 
-  interface WXComponentBehavior<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentBehaviorConstructOptions<P, D>, WXComponentInstance<P, D> {
-    properties?: P
-    data?: NotOverlap<D, P>
+  /** 
+   * mixin的this实例
+   * 
+   * 一些字段即使没传也有默认值
+   */
+  interface WXComponentBehavior<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> extends WXComponentBehaviorConstructorOptions<P, D, M>, WXComponentInstance<P, D> {
+    properties: P
+    data: NotOverlap<D, P>
   }
 
   /**
@@ -185,10 +195,12 @@ declare namespace Component {
     getPageId(): string
   }
 
+  type WXComponentThisContext<P extends AnyObject = {}, D extends AnyObject = {}, M = {}> = ThisType<WXComponent<P, D> & M>
+
   /**
    * 构建组件的可选字段
    */
-  interface WXComponentConstructorOptions<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentLifeCycle {
+  interface WXComponentConstructorOptions<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> {
     options?: WXComponentOptions
 
     externalClasses?: string[]
@@ -202,13 +214,13 @@ declare namespace Component {
 
     data?: NotOverlap<D, P>
 
-    methods?: { [name: string]: WXComponentMethod } & ThisType<WXComponent<P, D>>
+    methods?: M & WXComponentThisContext<P, D, M>
 
-    observers?: { [keyPath in keyof (P | D)]: WXComponentObserver } & { [keyPath: string]: WXComponentObserver } & ThisType<WXComponent<P, D>>
+    observers?: { [keyPath in keyof (P | D)]: WXComponentObserver } & { [keyPath: string]: WXComponentObserver } & WXComponentThisContext<P, D, M>
 
-    lifetimes?: WXComponentLifeCycle & ThisType<WXComponent<P, D>>
+    lifetimes?: WXComponentLifeCycle & WXComponentThisContext<P, D, M>
 
-    pageLifetimes?: WXComponentPageLifeCycle & ThisType<WXComponent<P, D>>
+    pageLifetimes?: WXComponentPageLifeCycle & WXComponentThisContext<P, D, M>
 
     export?(): any
 
@@ -220,20 +232,24 @@ declare namespace Component {
    * 
    * 一些字段即使没传也有默认值
    */
-  interface WXComponent<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentConstructorOptions<P, D>, WXComponentInstance<P, D> {
+  interface WXComponent<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> extends WXComponentConstructorOptions<P, D, M>, WXComponentInstance<P, D> {
     properties: P
     data: NotOverlap<D, P>
   }
 
+  type ComponentOptions<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> = WXComponentConstructorOptions<P, D, M> & WXComponentLifeCycle & WXComponentThisContext<P, D, M>
+
   interface WXComponentConstructor {
-    <P extends IAnyObject = {}, D extends AnyObject = {}, E extends AnyObject = {}>(
-      options: WXComponentConstructorOptions<P, D> & E
+    <P extends IAnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}, E extends AnyObject = {}>(
+      options: ComponentOptions<P, D, M> & E
     ): void
   }
 
+  type BehaviourOptions<P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}> = WXComponentBehaviorConstructorOptions<P, D, M> & WXComponentLifeCycle & WXComponentBehaviourThisContext<P, D, M>
+
   interface WXComponentBehaviorConstructor {
-    <P extends AnyObject = {}, D extends AnyObject = {}, E extends AnyObject = {}>(
-      options: WXComponentBehaviorConstructOptions<P, D> & E
+    <P extends AnyObject = {}, D extends AnyObject = {}, M extends WXComponentMethods = {}, E extends AnyObject = {}>(
+      options: BehaviourOptions<P, D, M> & E
     ): WXComponentBehavior
   }
 

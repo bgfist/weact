@@ -467,7 +467,7 @@ export function FPage<R extends HookReturn>(hook: PageHookFunc<R>, extraOptions?
 }
 
 type ExtraCompOptionsView<R> = ChunkedComp & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
-type ExtraCompOptions_ = Omit<Component.WXComponentConstructorOptions,
+type ExtraCompOptions_ = Omit<Component.ComponentOptions,
   | "data" | "properties" | "methods" | "observers" // these are provided by props and hookfunc
   | "attached" | "detached" // these can be mocked by useEffect
   | "behaviors" | "lifetimes" // these are forbidden
