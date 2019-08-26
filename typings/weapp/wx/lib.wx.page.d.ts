@@ -57,6 +57,9 @@ declare namespace Page {
     text: string
   }
 
+  /**
+   * 页面的生命周期函数
+   */
   interface WXPageLifeCycle {
     /** 生命周期回调—监听页面加载
      *
@@ -132,17 +135,23 @@ declare namespace Page {
     ): void
   }
 
-  interface WXPageConstructorOptions<D extends AnyObjectOrUndefined = undefined> extends WXPageLifeCycle {
-    /** 页面的初始数据
-     * 
-     * `data` 是页面第一次渲染使用的**初始数据**。
-     * 
-     * 页面加载时，`data` 将会以`JSON`字符串的形式由逻辑层传至渲染层，因此`data`中的数据必须是可以转成`JSON`的类型：字符串，数字，布尔值，对象，数组。
-     * 
-     * 渲染层可以通过 `WXML` 对数据进行绑定。
-    */
-    data: D
+  /**
+   * 
+   * 页面的初始数据
+   * 
+   * `data` 是页面第一次渲染使用的**初始数据**。
+   * 
+   * 页面加载时，`data` 将会以`JSON`字符串的形式由逻辑层传至渲染层，因此`data`中的数据必须是可以转成`JSON`的类型：字符串，数字，布尔值，对象，数组。
+   * 
+   * 渲染层可以通过 `WXML` 对数据进行绑定。
+   * 
+  */
+  type WXPageData<D extends AnyObject = {}> = {} extends D ? { data?: D } : { data: D }
 
+  /**
+   * 页面内部属性和方法
+   */
+  interface WXPageInstance<D extends AnyObject = {}> {
     /** `setData` 函数用于将数据从逻辑层发送到视图层（异步），同时改变对应的 `this.data` 的值（同步）。
      *
      * **注意：**
@@ -152,9 +161,6 @@ declare namespace Page {
      * 1. 单次设置的数据不能超过1024kB，请尽量避免一次设置过多的数据。
      * 1. 请不要把 data 中任何一项的 value 设为 `undefined` ，否则这一项将不被设置并可能遗留一些潜在问题。
      */
-  }
-
-  interface WXPageInstance<D extends AnyObjectOrUndefined = undefined> {
     setData(
       /** 这次要改变的数据
        *
@@ -171,11 +177,22 @@ declare namespace Page {
     route: string
   }
 
-  interface WXPage<D extends AnyObjectOrUndefined = undefined> extends WXPageConstructorOptions<D>, WXPageInstance<D> { }
+  /**
+   * 页面的this实例
+   */
+  interface WXPage<D extends AnyObject = {}> extends WXPageInstance<D> {
+    /** data字段不传默认为空对象 */
+    data: D
+  }
+
+  /**
+   * 构造页面的可选字段
+   */
+  type Options<D extends AnyObject = {}, E extends AnyObject = {}> = WXPageLifeCycle & WXPageData<D> & E & ThisType<WXPage<D> & E>
 
   interface PageConstructor {
-    <D extends AnyObjectOrUndefined = undefined, E extends AnyObjectOrUndefined = undefined>(
-      options: Optional<WXPageConstructorOptions<D>> & E
+    <PageData extends AnyObject = {}, PageExtra extends AnyObject = {}>(
+      options: Options<PageData, PageExtra>
     ): void
   }
 

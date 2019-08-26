@@ -439,7 +439,7 @@ type PickDataFromHookReturn<R extends AnyObject> = Readonly<PickDataFromHookRetu
 type PickMethodsFromHookReturn<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? R[K] : never }
 
 type ExtraPageOptionsView<R> = ChunkedPage & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
-type ExtraPageOptions_ = Omit<Page.WXPageConstructorOptions,
+type ExtraPageOptions_ = Omit<Page.Options,
   | "data" // these are provided by hookfunc
   | "onLoad" | "onUnload" // these can be mocked by useEffect
 >

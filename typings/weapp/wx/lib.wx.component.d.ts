@@ -67,6 +67,9 @@ declare namespace Component {
     target?: WXComponentBehavior
   }
 
+  /**
+   * 组建的生命周期函数
+   */
   interface WXComponentLifeCycle {
     /**
      * 在组件实例刚刚被创建时执行
@@ -95,6 +98,9 @@ declare namespace Component {
     error?(err: Error): void
   }
 
+  /**
+   * 组建内与页面相关的生命周期函数
+   */
   interface WXComponentPageLifeCycle {
     /**
      * 组件所在的页面被展示时执行
@@ -110,7 +116,7 @@ declare namespace Component {
     resize?(size: { width: number; height: number }): void
   }
 
-  interface WXComponentBehaviorConstructOptions<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentLifeCycle {
+  interface WXComponentBehaviorConstructOptions<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentLifeCycle {
     behaviors?: (WXComponentBehavior | string)[]
 
     definitionFilter?: WXComponentDefinitionFilter
@@ -120,17 +126,23 @@ declare namespace Component {
      */
     properties?: P
 
-    data: NotOverlap<D, P>
+    data?: NotOverlap<D, P>
 
-    methods?: { [name: string]: WXComponentMethod }
+    methods?: { [name: string]: WXComponentMethod } & ThisType<WXComponentBehavior<P, D>>
   }
 
-  interface WXComponentBehavior<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentBehaviorConstructOptions<P, D>, WXComponentInstance<P, D> { }
+  interface WXComponentBehavior<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentBehaviorConstructOptions<P, D>, WXComponentInstance<P, D> {
+    properties?: P
+    data?: NotOverlap<D, P>
+  }
 
-  interface WXComponentInstance<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> {
+  /**
+   * 组建的内部属性和方法
+   */
+  interface WXComponentInstance<P extends AnyObject = {}, D extends AnyObject = {}> {
     /**
- * 组件的文件路径
- */
+     * 组件的文件路径
+     */
     is: string
 
     /**
@@ -173,7 +185,10 @@ declare namespace Component {
     getPageId(): string
   }
 
-  interface WXComponentConstructorOptions<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentLifeCycle {
+  /**
+   * 构建组件的可选字段
+   */
+  interface WXComponentConstructorOptions<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentLifeCycle {
     options?: WXComponentOptions
 
     externalClasses?: string[]
@@ -185,32 +200,40 @@ declare namespace Component {
      */
     properties?: P
 
-    data: NotOverlap<D, P>
+    data?: NotOverlap<D, P>
 
-    methods?: { [name: string]: WXComponentMethod }
+    methods?: { [name: string]: WXComponentMethod } & ThisType<WXComponent<P, D>>
 
-    observers?: { [keyPath in keyof (P | D)]: WXComponentObserver } & { [keyPath: string]: WXComponentObserver }
+    observers?: { [keyPath in keyof (P | D)]: WXComponentObserver } & { [keyPath: string]: WXComponentObserver } & ThisType<WXComponent<P, D>>
 
-    lifetimes?: WXComponentLifeCycle
+    lifetimes?: WXComponentLifeCycle & ThisType<WXComponent<P, D>>
 
-    pageLifetimes?: WXComponentLifeCycle
+    pageLifetimes?: WXComponentPageLifeCycle & ThisType<WXComponent<P, D>>
 
     export?(): any
 
     relations?: { [k: string]: any }
   }
 
-  interface WXComponent<P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined> extends WXComponentConstructorOptions<P, D>, WXComponentInstance<P, D> { }
+  /** 
+   * 组件的this实例
+   * 
+   * 一些字段即使没传也有默认值
+   */
+  interface WXComponent<P extends AnyObject = {}, D extends AnyObject = {}> extends WXComponentConstructorOptions<P, D>, WXComponentInstance<P, D> {
+    properties: P
+    data: NotOverlap<D, P>
+  }
 
   interface WXComponentConstructor {
-    <P extends IAnyObject = any, D extends AnyObject = any, E extends AnyObject = any>(
-      options: Optional<WXComponentConstructorOptions<P, D>> & E
+    <P extends IAnyObject = {}, D extends AnyObject = {}, E extends AnyObject = {}>(
+      options: WXComponentConstructorOptions<P, D> & E
     ): void
   }
 
   interface WXComponentBehaviorConstructor {
-    <P extends AnyObjectOrUndefined = undefined, D extends AnyObjectOrUndefined = undefined, E extends AnyObject = any>(
-      options: Optional<WXComponentBehaviorConstructOptions<P, D>> & E
+    <P extends AnyObject = {}, D extends AnyObject = {}, E extends AnyObject = {}>(
+      options: WXComponentBehaviorConstructOptions<P, D> & E
     ): WXComponentBehavior
   }
 
