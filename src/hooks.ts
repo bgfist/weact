@@ -99,12 +99,12 @@ export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Update
   const cursor = hookCursor++
 
   if (!(cursor in hooksCtx.state)) {
-    hooksCtx.state[cursor] = typeof initValue === 'function' ? initValue.call(null) : initValue
+    hooksCtx.state[cursor] = typeof initValue === 'function' ? (initValue as (...args: any[]) => T).call(null) : initValue
   }
 
   const updater = (value: UpdaterParam<T>) => {
     if (typeof value === "function") {
-      hooksCtx.state[cursor] = value.call(null, hooksCtx.state[cursor])
+      hooksCtx.state[cursor] = (value as (prev: T) => T).call(null, hooksCtx.state[cursor])
     } else {
       hooksCtx.state[cursor] = value
     }
@@ -427,9 +427,6 @@ function onDestroy(this: WXRenderer) {
       unload.call(null)
     }
   })
-
-  // @ts-ignore
-  this.$$hooksCtx = null
 }
 
 type PageHookFunc<R extends HookReturn> = (options: any) => R
