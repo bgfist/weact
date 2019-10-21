@@ -55,7 +55,8 @@ for (const $key in wx) {
     // @ts-ignore
     wxp[key] = (options: any) =>
       new Promise((resolve, reject) => {
-        options.success = ({ data, res, result }: any) => resolve(data || res || result)
+        options = options || {}
+        options.success = (res: any) => resolve(res.data || res.res || res.result || res)
         options.fail = (err: any) => {
           reject(err)
         }
