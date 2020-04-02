@@ -1,6 +1,6 @@
 {
   "name": "@bgfist/weact",
-  "version": "1.0.20",
+  "version": "2.0.0",
   "description": "A Framework For Writing Wechat MiniProgram Like React, And With Typescript",
   "main": "dist/index.js",
   "types": "d/index.d.ts",
