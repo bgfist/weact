@@ -1,6 +1,7 @@
 const equalSymbol = Symbol("equal")
 const replaceSymbol = Symbol("replace")
 
+type AnyObject = Record<string, any>
 type AnyData = (AnyObject & { [replaceSymbol]?: boolean }) | undefined
 
 type EqualData = typeof equalSymbol

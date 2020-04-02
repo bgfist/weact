@@ -1,55 +1,63 @@
-/// <reference path="../typings/weapp/index.d.ts" />
+/// <reference types="miniprogram-api-typings"/>
 
-import { transformProperties, endlessProxy, deepCopy } from "./util"
+import { transformProperties, deepCopy, splitFieldsAndMethods } from "./util"
 import { genDiff } from './diff'
 import { debug, debugIt } from './debug'
 
-interface HookRecords<T> {
-  [index: string]: T
-}
+type AnyObject = Record<string, any>
+type AnyFunction = (...args: any[]) => any
+type NotOverlap<Dist, Src> = Extract<keyof Dist, keyof Src> extends never ? Dist : never
 
-type UpdaterParam<T> = T | ((prev: T) => T)
-export type Updater<T> = (value: UpdaterParam<T>) => void
+/**
+ * hook的参数，为以下三种情况
+ * 1. 不传
+ * 2. 传page的onLoad函数中接收到的options
+ * 3. 传component的properties
+ */
+export type HookProp = AnyObject | undefined
+/**
+ * hook的返回值，为数据和方法的集合
+ */
+export type HookReturn = AnyObject | void
+/**
+ * hook函数的类型定义，参数和返回值之间不能有冲突字段
+ */
+export type HookFunc<T extends HookProp, R extends HookReturn> = (props: T) => NotOverlap<R, T>
 
-type UnLoad = any
 
-export interface Ref<T = any> {
-  current: T
-}
+// ------------------------ 以下为hook上下文的相关定义 ----------------------------
 
-interface RendererHooksCtx<T extends HookProps = any> {
+export type HookRecord<T> = Record<string, T>
+export type HookUpdaterParam<T> = T | ((prev: T) => T)
+export type HookUpdater<T> = (value: HookUpdaterParam<T>) => void
+export type HookUnLoad = any
+export type HookRef<T> = { current: T }
+export type HookContext<T extends HookProp> = {
   renderName: string,
   props: T
   oldData?: AnyObject
   applyingPropChange: boolean
   render: () => void
-  state: HookRecords<any>
-  effect: HookRecords<{
-    unload: UnLoad
+  state: HookRecord<any>
+  effect: HookRecord<{
+    unload: HookUnLoad
     lastDeps?: any[]
   }>
-  layoutEffect: HookRecords<{
-    effectFunc?: () => UnLoad
-    unload?: UnLoad
+  layoutEffect: HookRecord<{
+    effectFunc?: () => HookUnLoad
+    unload?: HookUnLoad
   }>
-  memo: HookRecords<any>
-  ref: HookRecords<Ref>
+  memo: HookRecord<any>
+  ref: HookRecord<HookRef<any>>
   batchUpdating: boolean
 }
+export type HookRendererContext<T extends HookProp> = { $$hooksCtx: HookContext<T> }
+export type HookRenderer<T extends HookProp> = (WechatMiniprogram.Page.TrivialInstance | WechatMiniprogram.Component.TrivialInstance) & HookRendererContext<T>
 
-interface WXRenderHooksCtx<T extends HookProps = any> {
-  $$hooksCtx: RendererHooksCtx<T>
-}
 
-type WXRenderer<T extends HookProps = any> = (Page.WXPage | Component.WXComponent) & WXRenderHooksCtx<T>
+// -------------------------- 以下为hook的实现代码 ----------------------------
 
-type HookProps = AnyObject | undefined
-
-type HookReturn = AnyObject | void
-
-type HookFunc<T extends HookProps, R extends HookReturn> = (props: T) => NotOverlap<R, T>
-
-let currentRenderer: WXRenderer | null = null
+let currentRenderer: HookRenderer<any> | null = null
 let hookCursor = 0
 
 function assetRendering() {
@@ -58,23 +66,7 @@ function assetRendering() {
   }
 }
 
-function splitDataAndMethod(def: AnyObject) {
-  const data: AnyObject = {}
-  const methods: AnyObject = {}
-
-  Object.keys(def).forEach(key => {
-    const value = def[key]
-    if (typeof value === "function") {
-      methods[key] = value.bind(null)
-    } else {
-      data[key] = value
-    }
-  })
-
-  return { data, methods }
-}
-
-function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newVal: any, oldVal: any) {
+function propChangeObserver(this: WechatMiniprogram.Component.TrivialInstance & HookRendererContext<AnyObject>, newVal: any, oldVal: any) {
   debug("PropChanged", this.$$hooksCtx && this.$$hooksCtx.renderName, newVal === oldVal || !this.$$hooksCtx ? '[render skipped]' : '')
   if (newVal !== oldVal) {
     if (this.$$hooksCtx) {
@@ -90,9 +82,103 @@ function propChangeObserver(this: Component.WXComponent & WXRenderHooksCtx, newV
   }
 }
 
-export function useState<T>(): [T | undefined, Updater<T | undefined>]
-export function useState<T>(initValue: T | ((...args: any[]) => T)): [T, Updater<T>]
-export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Updater<T>] {
+function onCreate<T extends HookProp, R extends HookReturn>(this: HookRenderer<T>, hook: HookFunc<T, R>, props: T) {
+  let rendering = false
+
+  const hooksCtx: HookContext<T> = this.$$hooksCtx = {
+    renderName: hook.name,
+    props,
+    oldData: undefined,
+    applyingPropChange: false,
+    state: [],
+    effect: {},
+    layoutEffect: {},
+    memo: {},
+    ref: {},
+    batchUpdating: false,
+    render: () => {
+      if (rendering) {
+        throw new Error("嵌套调用hook，请检查hook中是否有同步调用update的操作，可使用wx.nextTick规避")
+      }
+
+      rendering = true
+      currentRenderer = this
+      hookCursor = 0
+      const newDef = (hook.call(null, hooksCtx.props) || {}) as AnyObject
+      currentRenderer = null
+      rendering = false
+
+      const { fields: data, methods } = splitFieldsAndMethods(newDef)
+
+      if (debugIt()) {
+        debug("newDataAndMethods", hooksCtx.renderName, deepCopy(data), methods)
+      }
+
+      Object.keys(methods).forEach(key => {
+        ; (this as any)[key] = methods[key]
+      })
+
+      const triggerEffect = () => {
+        Object.keys(hooksCtx.layoutEffect).forEach(key => {
+          const { effectFunc, unload } = hooksCtx.layoutEffect[key]
+          if (effectFunc) {
+            if (typeof unload === "function") {
+              unload.call(null)
+            }
+            hooksCtx.layoutEffect[key].effectFunc = undefined
+            hooksCtx.layoutEffect[key].unload = effectFunc.call(null)
+          }
+        })
+      }
+
+      const diff = genDiff(data, hooksCtx.oldData)
+      hooksCtx.oldData = data
+
+      const noUpdate = !Object.keys(diff).length
+
+      if (debugIt()) {
+        debug("setData", hooksCtx.renderName, deepCopy(diff), noUpdate ? '[skipped]' : '')
+      }
+
+      if (noUpdate) {
+        wx.nextTick(() => triggerEffect())
+        return
+      }
+
+      this.setData(diff as any, () => {
+        debug("setData:updated", hooksCtx.renderName)
+        triggerEffect()
+      })
+    }
+  }
+  hooksCtx.render()
+}
+
+function onDestroy(this: HookRenderer<any>) {
+  const hooksCtx = this.$$hooksCtx
+
+  Object.keys(hooksCtx.effect).forEach(key => {
+    const effect = hooksCtx.effect[key]
+    const unload = effect.unload
+    if (typeof unload === "function") {
+      unload.call(null)
+    }
+  })
+  Object.keys(hooksCtx.layoutEffect).forEach(key => {
+    const effect = hooksCtx.layoutEffect[key]
+    const unload = effect.unload
+    if (typeof unload === "function") {
+      unload.call(null)
+    }
+  })
+}
+
+/**
+ * @param initValue 初始值，传函数则直接执行该函数然后将其返回值存为初始值
+ */
+export function useState<T>(): [T | undefined, HookUpdater<T | undefined>]
+export function useState<T>(initValue: T | ((...args: any[]) => T)): [T, HookUpdater<T>]
+export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, HookUpdater<T>] {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
@@ -102,7 +188,7 @@ export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Update
     hooksCtx.state[cursor] = typeof initValue === 'function' ? (initValue as (...args: any[]) => T).call(null) : initValue
   }
 
-  const updater = (value: UpdaterParam<T>) => {
+  const updater = (value: HookUpdaterParam<T>) => {
     if (typeof value === "function") {
       hooksCtx.state[cursor] = (value as (prev: T) => T).call(null, hooksCtx.state[cursor])
     } else {
@@ -117,11 +203,11 @@ export function useState<T>(initValue?: T | ((...args: any[]) => T)): [T, Update
 }
 
 /**
- * @param effectFunc 在每次依赖变化时执行的副作用函数，effectFunc直接在当前render函数中执行，
+ * @param effectFunc 在每次依赖变化时执行的副作用函数，effectFunc直接同步执行
  * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
  * @param onlyUpdate 仅在更新时触发，初始时不触发
  */
-function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
+export function useSideEffect(effectFunc: () => HookUnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
@@ -165,13 +251,11 @@ function useEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean)
 }
 
 /** 
- * useLayoutEffect与useEffect的效果一样
- * 
- * @param effectFunc 在每次依赖变化时执行的副作用函数，将在视图刷新后执行
+ * @param effectFunc 在每次依赖变化时执行的副作用函数，将在视图更新后执行(异步执行)
  * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
  * @param onlyUpdate 仅在更新时触发，初始时不触发
  */
-export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpdate?: boolean) {
+export function useEffect(effectFunc: () => HookUnLoad, deps?: any[], onlyUpdate?: boolean) {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
@@ -181,35 +265,35 @@ export function useLayoutEffect(effectFunc: () => UnLoad, deps?: any[], onlyUpda
     hooksCtx.layoutEffect[cursor] = {}
   }
 
-  useEffect(() => {
+  useSideEffect(() => {
     hooksCtx.layoutEffect[cursor].effectFunc = effectFunc
   }, deps, onlyUpdate)
 }
 
-export {
-  useLayoutEffect as useEffect
-}
-
-export function useMemo<T>(create: () => T, inputs?: any[]): T {
+/**
+ * @param compute 计算函数，每次依赖变化时执行
+ * @param deps 不传表示每次更新都触发，传空数组表示只在创建和销毁时触发，传非空数组表示依赖变化时触发
+ */
+export function useMemo<T>(compute: () => T, deps?: any[]): T {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
   const cursor = hookCursor++
 
-  useEffect(() => {
-    hooksCtx.memo[cursor] = create()
-  }, inputs)
+  useSideEffect(() => {
+    hooksCtx.memo[cursor] = compute()
+  }, deps)
 
   return hooksCtx.memo[cursor]
 }
 
-export function useCallback(callback: AnyFunction, inputs?: any[]) {
-  return useMemo(() => callback, inputs)
-}
-
-export function useRef<T>(): Ref<T | undefined>
-export function useRef<T>(initValue: T): Ref<T>
-export function useRef<T>(initValue?: T): Ref<T> {
+/**
+ * returns a mutable ref object whose .current property is initialized to the passed argument (initialValue). 
+ * The returned object will persist for the full lifetime of the component.
+ */
+export function useRef<T>(): HookRef<T | undefined>
+export function useRef<T>(initValue: T): HookRef<T>
+export function useRef<T>(initValue?: T): HookRef<T> {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
@@ -222,6 +306,10 @@ export function useRef<T>(initValue?: T): Ref<T> {
   return hooksCtx.ref[cursor]
 }
 
+/**
+ * An alternative to useState. Accepts a reducer of type (state, action) => newState, 
+ * and returns the current state paired with a dispatch method
+ */
 export function useReducer<S, I, A>(reducer: (state: S, action: A) => S, initialArg: I, init?: (initialArg: I) => S): [S, (action: A) => void] {
   const initalState = (init ? init(initialArg) : initialArg) as S
   const [state, setState] = useState(initalState)
@@ -236,6 +324,9 @@ export function useReducer<S, I, A>(reducer: (state: S, action: A) => S, initial
   return [state, dispatch]
 }
 
+/**
+ * 每次都返回之前的值，第一次执行时返回undefined
+ */
 export function usePrevious<T>(value: T) {
   const previous = useRef<T>()
   const previousValue = previous.current
@@ -253,7 +344,7 @@ export function usePrevious<T>(value: T) {
 export function useOnce(func: AnyFunction, condition = true) {
   const invoked = useRef(false)
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!invoked.current && condition) {
       invoked.current = true
       func.call(null)
@@ -275,19 +366,19 @@ export function useOnce(func: AnyFunction, condition = true) {
  * // updateAgeAndName(20, "react")
  * ```
  */
-export function useBatchUpdate<A, B>(updaterA: Updater<A>, updaterB: Updater<B>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>) => void
-export function useBatchUpdate<A, B, C>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>) => void
-export function useBatchUpdate<A, B, C, D>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>) => void
-export function useBatchUpdate<A, B, C, D, E>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>) => void
-export function useBatchUpdate<A, B, C, D, E, F>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>, updaterF: Updater<F>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>, valueF: UpdaterParam<F>) => void
-export function useBatchUpdate<A, B, C, D, E, F, G>(updaterA: Updater<A>, updaterB: Updater<B>, updaterC: Updater<C>, updaterD: Updater<D>, updaterE: Updater<E>, updaterF: Updater<F>, updaterG: Updater<G>): (valueA: UpdaterParam<A>, valueB: UpdaterParam<B>, valueC: UpdaterParam<C>, valueD: UpdaterParam<D>, valueE: UpdaterParam<E>, valueF: UpdaterParam<F>, valueG: UpdaterParam<G>) => void
-export function useBatchUpdate<T>(...updaters: Array<Updater<T>>): (...values: Array<UpdaterParam<T>>) => void
-export function useBatchUpdate(...updaters: Array<Updater<any>>) {
+export function useBatchUpdate<A, B>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>) => void
+export function useBatchUpdate<A, B, C>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>, updaterC: HookUpdater<C>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>, valueC: HookUpdaterParam<C>) => void
+export function useBatchUpdate<A, B, C, D>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>, updaterC: HookUpdater<C>, updaterD: HookUpdater<D>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>, valueC: HookUpdaterParam<C>, valueD: HookUpdaterParam<D>) => void
+export function useBatchUpdate<A, B, C, D, E>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>, updaterC: HookUpdater<C>, updaterD: HookUpdater<D>, updaterE: HookUpdater<E>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>, valueC: HookUpdaterParam<C>, valueD: HookUpdaterParam<D>, valueE: HookUpdaterParam<E>) => void
+export function useBatchUpdate<A, B, C, D, E, F>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>, updaterC: HookUpdater<C>, updaterD: HookUpdater<D>, updaterE: HookUpdater<E>, updaterF: HookUpdater<F>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>, valueC: HookUpdaterParam<C>, valueD: HookUpdaterParam<D>, valueE: HookUpdaterParam<E>, valueF: HookUpdaterParam<F>) => void
+export function useBatchUpdate<A, B, C, D, E, F, G>(updaterA: HookUpdater<A>, updaterB: HookUpdater<B>, updaterC: HookUpdater<C>, updaterD: HookUpdater<D>, updaterE: HookUpdater<E>, updaterF: HookUpdater<F>, updaterG: HookUpdater<G>): (valueA: HookUpdaterParam<A>, valueB: HookUpdaterParam<B>, valueC: HookUpdaterParam<C>, valueD: HookUpdaterParam<D>, valueE: HookUpdaterParam<E>, valueF: HookUpdaterParam<F>, valueG: HookUpdaterParam<G>) => void
+export function useBatchUpdate<T>(...updaters: Array<HookUpdater<T>>): (...values: Array<HookUpdaterParam<T>>) => void
+export function useBatchUpdate(...updaters: Array<HookUpdater<any>>) {
   assetRendering()
 
   const hooksCtx = currentRenderer!.$$hooksCtx
 
-  return (...values: Array<UpdaterParam<any>>) => {
+  return (...values: Array<HookUpdaterParam<any>>) => {
     hooksCtx.batchUpdating = true
     updaters.forEach((updater, i) => updater.call(null, values[i]))
     hooksCtx.batchUpdating = false
@@ -296,12 +387,14 @@ export function useBatchUpdate(...updaters: Array<Updater<any>>) {
 }
 
 
-type ChunkedPage = Omit<Page.WXPageInstance<any>, "setData">
-
+/**
+ * 阉割版page实例，只有部分方法和属性
+ */
+export type ChunkedPage = Omit<WechatMiniprogram.Page.TrivialInstance, "setData">
 /**
  * 获取当前page实例(阉割版，只有部分方法和属性)
  * - 不传func则直接返回page实例
- * - 传func，则func的第一个参数是page实例，useThisAsPage将返回func函数执行后的结果
+ * - 传func，则func的第一个参数是阉割版page实例，useThisAsPage将返回func函数执行后的结果
  */
 export function useThisAsPage(): ChunkedPage
 export function useThisAsPage(func: (this: ChunkedPage, self: ChunkedPage) => any): AnyFunction
@@ -317,12 +410,14 @@ export function useThisAsPage(func?: (this: ChunkedPage, self: ChunkedPage) => a
   return () => func.call(inst, inst)
 }
 
-type ChunkedComp = Omit<Component.WXComponentInstance<any>, "setData">
-
+/**
+ * 阉割版component实例，只有部分方法和属性
+ */
+type ChunkedComp = Omit<WechatMiniprogram.Component.TrivialInstance, "setData">
 /**
  * 获取当前component实例(阉割版，只有部分方法和属性)
  * - 不传func则直接返回component实例
- * - 传func，则func的第一个参数是component实例，useThisAsComp将返回func函数执行后的结果
+ * - 传func，则func的第一个参数是阉割版component实例，useThisAsComp将返回func函数执行后的结果
  */
 export function useThisAsComp(): ChunkedComp
 export function useThisAsComp(func: (this: ChunkedComp, self: ChunkedComp) => any): AnyFunction
@@ -338,112 +433,21 @@ export function useThisAsComp(func?: (this: ChunkedComp, self: ChunkedComp) => a
   return () => func.call(inst, inst)
 }
 
-function onCreate<T extends HookProps, R extends HookReturn>(this: WXRenderer<T>, hook: HookFunc<T, R>, props: T) {
-  let rendering = false
 
-  const hooksCtx: RendererHooksCtx<T> = this.$$hooksCtx = {
-    renderName: hook.name,
-    props,
-    oldData: undefined,
-    applyingPropChange: false,
-    state: [],
-    effect: {},
-    layoutEffect: {},
-    memo: {},
-    ref: {},
-    batchUpdating: false,
-    render: () => {
-      if (rendering) {
-        throw new Error("嵌套调用hook，请检查hook中是否有同步调用update的操作，可使用wx.nextTick规避")
-      }
-
-      rendering = true
-      currentRenderer = this
-      hookCursor = 0
-      const newDef = (hook.call(null, hooksCtx.props) || {}) as AnyObject
-      currentRenderer = null
-      rendering = false
-
-      const { data, methods } = splitDataAndMethod(newDef)
-
-      if (debugIt()) {
-        debug("newDataAndMethods", hooksCtx.renderName, deepCopy(data), methods)
-      }
-
-      Object.keys(methods).forEach(key => {
-        ; (this as any)[key] = methods[key]
-      })
-
-      const triggerLayoutEffect = () => {
-        Object.keys(hooksCtx.layoutEffect).forEach(key => {
-          const { effectFunc, unload } = hooksCtx.layoutEffect[key]
-          if (effectFunc) {
-            if (typeof unload === "function") {
-              unload.call(null)
-            }
-            hooksCtx.layoutEffect[key].effectFunc = undefined
-            hooksCtx.layoutEffect[key].unload = effectFunc.call(null)
-          }
-        })
-      }
-
-      const diff = genDiff(data, hooksCtx.oldData)
-      hooksCtx.oldData = data
-
-      const noUpdate = !Object.keys(diff).length
-
-      if (debugIt()) {
-        debug("setData", hooksCtx.renderName, deepCopy(diff), noUpdate ? '[skipped]' : '')
-      }
-
-      if (noUpdate) {
-        wx.nextTick(() => triggerLayoutEffect())
-        return
-      }
-
-      this.setData(diff as any, () => {
-        debug("setData:updated", hooksCtx.renderName)
-        triggerLayoutEffect()
-      })
-    }
-  }
-  hooksCtx.render()
-}
-
-function onDestroy(this: WXRenderer) {
-  const hooksCtx = this.$$hooksCtx
-
-  Object.keys(hooksCtx.effect).forEach(key => {
-    const effect = hooksCtx.effect[key]
-    const unload = effect.unload
-    if (typeof unload === "function") {
-      unload.call(null)
-    }
-  })
-  Object.keys(hooksCtx.layoutEffect).forEach(key => {
-    const effect = hooksCtx.layoutEffect[key]
-    const unload = effect.unload
-    if (typeof unload === "function") {
-      unload.call(null)
-    }
-  })
-}
+// ---------------------- 以下为初始化page和component的接口 --------------------------
 
 type PageHookFunc<R extends HookReturn> = (options: any) => R
-
 type PickDataFromHookReturn_<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? never : R[K] }
 type PickDataFromHookReturn<R extends AnyObject> = Readonly<PickDataFromHookReturn_<R>>
 type PickMethodsFromHookReturn<R extends AnyObject> = { [K in keyof R]: R[K] extends AnyFunction ? R[K] : never }
-
 type ExtraPageOptionsView<R> = ChunkedPage & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
-type ExtraPageOptions_ = Omit<Page.Options,
+type ExtraPageOptions_ = Omit<WechatMiniprogram.Page.Options<AnyObject, AnyObject>,
   | "data" // these are provided by hookfunc
   | "onLoad" | "onUnload" // these can be mocked by useEffect
 >
 type ExtraPageOptions = Required<ExtraPageOptions_>
 type ExtraPageOptionsThis_<R> = { [K in keyof ExtraPageOptions]: ExtraPageOptions[K] extends AnyFunction ? (this: ExtraPageOptionsView<R>, ...args: Parameters<ExtraPageOptions[K]>) => ReturnType<ExtraPageOptions[K]> : ExtraPageOptions[K] }
 type ExtraPageOptionsThis<R> = Optional<ExtraPageOptionsThis_<R>>
-
 /**
  * 注册一个页面
  * 
@@ -452,8 +456,8 @@ type ExtraPageOptionsThis<R> = Optional<ExtraPageOptionsThis_<R>>
  */
 export function FPage<R extends HookReturn>(hook: PageHookFunc<R>, extraOptions?: ExtraPageOptionsThis<R>) {
   // @ts-ignore
-  return Page<any, WXRenderHooksCtx>({
-    onLoad(options) {
+  return Page<any, HookRendererContext>({
+    onLoad(options: any) {
       onCreate.call(this, hook as HookFunc<any, R>, options)
     },
     onUnload() {
@@ -464,7 +468,7 @@ export function FPage<R extends HookReturn>(hook: PageHookFunc<R>, extraOptions?
 }
 
 type ExtraCompOptionsView<R> = ChunkedComp & { readonly data: PickDataFromHookReturn<R> } & PickMethodsFromHookReturn<R>;
-type ExtraCompOptions_ = Omit<Component.ComponentOptions,
+type ExtraCompOptions_ = Omit<WechatMiniprogram.Component.ComponentOptions,
   | "data" | "properties" | "methods" | "observers" // these are provided by props and hookfunc
   | "attached" | "detached" // these can be mocked by useEffect
   | "behaviors" | "lifetimes" // these are forbidden
@@ -472,7 +476,6 @@ type ExtraCompOptions_ = Omit<Component.ComponentOptions,
 type ExtraCompOptions = Required<ExtraCompOptions_>
 type ExtraCompOptionsThis_<R> = { [K in keyof ExtraCompOptions]: ExtraCompOptions[K] extends AnyFunction ? (this: ExtraCompOptionsView<R>, ...args: Parameters<ExtraCompOptions[K]>) => ReturnType<ExtraCompOptions[K]> : ExtraCompOptions[K] }
 type ExtraCompOptionsThis<R> = Optional<ExtraCompOptionsThis_<R>>
-
 /**
  * 注册一个组件
  * 
@@ -482,7 +485,7 @@ type ExtraCompOptionsThis<R> = Optional<ExtraCompOptionsThis_<R>>
  */
 export function FComp<T extends undefined, R extends HookReturn>(func: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>): void
 export function FComp<T extends AnyObject, R extends HookReturn>(func: HookFunc<T, R>, defaultProps: T, extraOptions?: ExtraCompOptionsThis<R>): void
-export function FComp<T extends HookProps, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
+export function FComp<T extends HookProp, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps?: T, extraOptions?: ExtraCompOptionsThis<R>) {
   const properties: any = transformProperties(defaultProps)
   const propertyKeys: string[] = []
   for (const k in properties) {
@@ -490,70 +493,14 @@ export function FComp<T extends HookProps, R extends HookReturn>(hook: HookFunc<
     propertyKeys.push(k)
   }
   // @ts-ignore
-  return Component<T, any, WXRenderHooksCtx>({
+  return Component<T, any, HookRendererContext>({
     properties,
     attached() {
-      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, hook, this.properties)
+      onCreate.call(this, hook as HookFunc<any, R>, this.properties)
     },
     detached() {
       onDestroy.call(this)
     },
     ...extraOptions
   })
-}
-
-/**
- * 创建一个用来跑hook测试的东西
- * 
- * @param hook 待测试的hook
- * @param defaultProps hook的参数
- */
-export function createHookRunner<T extends HookProps, R extends HookReturn>(hook: HookFunc<T, R>, defaultProps: T) {
-  // @ts-ignore
-  const mockRenderrer: WXPage = {
-    data: {},
-    setData(data: any, callback?: () => void) { setTimeout(callback) },
-    onLoad() {
-      onCreate.call<WXRenderer, HookFunc<T, R>, T, void>(this, hook, defaultProps)
-    },
-    onUnload() {
-      onDestroy.call(this)
-    }
-  }
-
-  const proxy = new Proxy(mockRenderrer, {
-    get(target: any, key: string) {
-      if (key in target) {
-        return target[key]
-      }
-      return endlessProxy
-    }
-  })
-
-  proxy.onLoad()
-
-  return {
-    unMount() {
-      proxy.onUnload()
-    },
-    run(props?: T) {
-      if (props) {
-        proxy.$$hooksCtx.props = props
-      }
-      proxy.$$hooksCtx.render()
-    }
-  }
-}
-
-/**
- * 比对两次调用hook后的返回值的差异(仅比对数据，不比对方法)
- * 
- * @param newRet hook最新的返回值
- * @param oldRet hook之前的返回值
- */
-export function diffHookReturnData(newRet: any, oldRet: any) {
-  const { data: newData } = splitDataAndMethod(newRet || {})
-  const { data: oldData } = splitDataAndMethod(oldRet || {})
-
-  return genDiff(newData, oldData)
 }

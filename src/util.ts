@@ -1,15 +1,6 @@
-/// <reference path="../typings/weapp/index.d.ts" />
+/// <reference types="miniprogram-api-typings" />
 
-export function collectClassProps(obj: any, ...excludes: string[]) {
-  const props: any = {}
-  for (const k in obj) {
-    // @ts-ignore
-    props[k] = obj[k]
-  }
-  delete props.constructor
-  excludes.forEach(exclude => delete props[exclude])
-  return props
-}
+export type ConnectFunc<C = any> = (c: C, isComponent: boolean) => C
 
 export function splitFieldsAndMethods(obj: AnyObject) {
   const fields: AnyObject = {}
@@ -26,21 +17,6 @@ export function splitFieldsAndMethods(obj: AnyObject) {
     methods
   }
 }
-
-export type ConnectFunc<C = any> = (c: C, isComponent: boolean) => C
-
-export function identity<T = any>(t: T, isComponent = false) {
-  return t
-}
-
-export const endlessProxy: any = new Proxy(() => { }, {
-  get() {
-    return endlessProxy
-  },
-  apply() {
-    return endlessProxy
-  }
-})
 
 export function transformProperties(properties: AnyObject | undefined) {
   if (!properties) {

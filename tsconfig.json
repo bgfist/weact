@@ -3,10 +3,14 @@
     "target": "ES5",
     "strict": true,
     "moduleResolution": "node",
-    "noLib": true,
+    "lib": [
+      "ES6"
+    ],
     "outDir": "dist",
     "declaration": true,
     "declarationDir": "d"
   },
-  "include": ["./src/**/*.ts"]
+  "include": [
+    "./src/**/*.ts"
+  ]
 }
